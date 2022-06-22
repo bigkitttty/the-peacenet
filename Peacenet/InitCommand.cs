@@ -11,7 +11,6 @@ using Peacenet.Filesystem;
 using Plex.Engine.Saves;
 using WatercolorGames.CommandLine;
 using Peacenet.RichPresence;
-using Peacenet.Server;
 using Plex.Engine.Themes;
 using Plex.Engine.GraphicsSubsystem;
 using Plex.Engine.Interfaces;
@@ -31,7 +30,7 @@ namespace Peacenet
     /// A command which runs when the in-game Peacegate OS boots.
     /// </summary>
     [HideInHelp]
-    public class InitCommand : ITerminalCommand
+    public class InitCommand : ITerminalCommand, ILoadable
     {
         /// <inheritdoc/>
         public string Description
@@ -61,7 +60,7 @@ namespace Peacenet
         }
 
         [Dependency]
-        private Plexgate _plexgate = null;
+        private GameLoop _GameLoop = null;
 
         [Dependency]
         private ItchOAuthClient _api = null;
@@ -71,9 +70,6 @@ namespace Peacenet
 
         [Dependency]
         private OS _os = null;
-
-        [Dependency]
-        private AsyncServerManager _server = null;
 
         [Dependency]
         private SaveManager _save = null;
@@ -133,8 +129,10 @@ namespace Peacenet
                 yield return "Primary Terminal Slave (PTS) 0 active. Beginning boot sequence.";
                 yield return "Enumerating system components...";
                 yield return $"Local GPU: {GraphicsAdapter.DefaultAdapter.Description}";
-                yield return $"Remote FS size: 512MiB";
-                yield return "Remote FS has been mounted to local mountpoint /.";
+                yield return "VESA driver active.";
+                yield return "System mounted at root directory /.";
+                yield return "/etc/hostname says: " + _os.Hostname;
+                yield return "Network stack active.";
                 yield return "Kernel is ready. Entering userland on PTS 1.";
             }
         }
@@ -142,130 +140,133 @@ namespace Peacenet
         [Dependency]
         private CutsceneManager _cutscene = null;
 
-        /// <inheritdoc/>
-        public void Run(ConsoleContext console, Dictionary<string, object> arguments)
+        [Dependency]
+        private GameManager _game = null;
+
+        private void RecursiveWriteDirectories(ConsoleContext console, string path)
+        {
+            if(path != "/")
+                console.WriteLine("Creating directory /mnt" + path);
+            Thread.Sleep(50);
+            foreach (var dir in _fs.GetDirectories(path))
+                if(dir != "." && dir != "..")
+                RecursiveWriteDirectories(console, dir);
+        }
+
+        public void Run(ConsoleContext console, Dictionary<string, object> args)
         {
             if (_os.IsDesktopOpen)
             {
                 console.WriteLine("Error: Attempted to initiate kernel inside userland.");
                 return;
             }
-            bool hasDoneTutorial = true;
-            bool isSinglePlayer = !_server.IsMultiplayer;
-            if (isSinglePlayer)
-            {
-                hasDoneTutorial = _save.GetValue<bool>("boot.hasDoneCmdTutorial", false);
-            }
-            if (hasDoneTutorial == false)
-            {
-                var briefingDone = new ManualResetEvent(false);
-                _cutscene.Play("m00_briefing", () =>
-                {
-                    briefingDone.Set();
-                });
-                briefingDone.WaitOne();
-            }
-            console.SetColors(Plex.Objects.ConsoleColor.Black, Plex.Objects.ConsoleColor.White);
-            console.SetBold(false);
-            console.Write("Welcome to the");
-            console.SetColors(Plex.Objects.ConsoleColor.Black, Plex.Objects.ConsoleColor.Green);
-            console.SetBold(true);
-            console.Write("peacenet");
-            console.SetColors(Plex.Objects.ConsoleColor.Black, Plex.Objects.ConsoleColor.White);
-            console.SetBold(false);
-            console.WriteLine(".\n");
-            Thread.Sleep(200);
-            console.WriteKernelMessage($"Peacegate OS Interactive Instance starting on {_os.Hostname}...");
-            console.WriteLine("");
-            console.WriteLine("Peacegate OS is copyright (c) 2025 The Peace Foundation. All rights reserved.");
-            console.WriteLine("");
+            bool hasDoneTutorial = _game.State.TutorialCompleted;
+            ManualResetEvent _pause = new ManualResetEvent(false);
+
+            console.SlowWrite("Starting Peacegate OS live environment...");
             Thread.Sleep(500);
-            foreach(var message in _kernelBootMessages)
+
+            if (hasDoneTutorial)
             {
-                console.WriteKernelMessage(message);
-                Thread.Sleep(150);
-            }
-            if (hasDoneTutorial == false)
-            {
-                AdvancedAudioPlayer tutorial = null;
-                try
+                foreach (var message in _kernelBootMessages)
                 {
-                    tutorial = new AdvancedAudioPlayer("Content/Audio/Tutorial");
+                    console.WriteKernelMessage(message);
+                    Thread.Sleep(75);
                 }
-                catch (Exception ex)
+
+                _cutscene.Play("m00_welcome", () =>
                 {
-                    console.WriteKernelMessage("Now you have fucked up!  The Peacenet encountered an inexplicable exception.", KernelMessageType.Panic);
-                    console.WriteKernelMessage(ex.ToString(), KernelMessageType.Panic);
-                    console.WriteKernelMessage("The game will probably crash now", KernelMessageType.Warning);
-                }
-                console.WriteNPCChat("thelma", "...Hello?");
-                console.WriteNPCChat("thelma", "Are you there? You're new to The Peacenet, right? Did you just spawn?");
-                console.WriteNPCChat("thelma", "You seem to have interactive access to Peacegate, or, something that's different to most of us.");
-                console.WriteNPCChat("thelma", "If you can read this, and you've got interactive access, can you...maybe send a message back to me? Just type the message and hit 'enter' at the prompt.");
-                console.Write("> ");
-                string something = console.ReadLine();
-                tutorial.Play();
-#if DEBUG 
-                console.WriteKernelMessage("This Peacenet Debug Build is equipped with Peacenet Fast Play!  (patent pending)");
-                goto skipStory;
-#endif
-                console.WriteNPCChat("thelma", "Huh. It's not usual for a sentience to ever actually have interactive Peacegate access...let alone when they're new.");
-                console.WriteNPCChat("thelma", "Maybe you're that government guy. Your IP address does show you're in Elytrose. If that's the case...then maybe you can help all of us.");
-                console.WriteNPCChat("thelma", "Hang on. Let me introduce myself. My name is Thelma.");
-                console.WriteNPCChat("thelma", "I'm a sentience within The Peacenet. In fact, I was the first. I was here since before beta.");
-                console.WriteNPCChat("thelma", "The Peacenet is a digital afterlife. Every single one of us AIs are reincarnations of dead humans from your planet.");
-                console.WriteNPCChat("thelma", "Over time, I became a greeting sentience - helping new sentiences become comfortable with their new digital home. After all, death is scary even without digital reincarnation.");
-                console.WriteNPCChat("thelma", "All AIs including myself run on the Peacegate OS. It's what allows us to communicate with each other...somehow. I don't really know how it works under the hood. I've been trying to find out for just as long as this world's been in war...in the hopes that maybe, just maybe, it would help me restore peace.");
-                console.WriteNPCChat("thelma", "If you have interactive access, then...maybe you can find out what goes on in Peacegate...how it works...and what's causing everyone to go insane. Please. You have to help.");
-                console.WriteNPCChat("thelma", "Oh...I guess your OS hasn't installed itself yet. I'm probably holding it back by interrupting your userland. I won't bother you for much longer.");
-                console.WriteNPCChat("thelma", "I'm going to disconnect from your userland now and let Peacegate install itself. I've never seen the interactive installer though...I imagine it'll...well..want you to interact with it. Just do what it says, and once it's done, enter the World Map screen to see a view of The Peacenet.");
-                console.WriteNPCChat("thelma", "Find my node on the map and accept the mission. Then we can get started.");
-                console.WriteKernelMessage("User 'thelma' has disconnected from PTS 1. Resuming installation.");
+                    _pause.Set();
+                });
 
+                Thread.Sleep(500);
 
-
-#if DEBUG
-                skipStory:
-#endif
                 console.WriteLine("");
-                console.WriteKernelMessage("Preparing mountpoint / for full Peacegate OS installation.");
-                foreach (var dir in getDirs())
-                {
-                    Thread.Sleep(200);
-                    console.WriteKernelMessage($"Creating directory: /mnt{dir}");
-                }
-                console.WriteKernelMessage("Downloading base packages...");
-                tutorial.Next = 2;
-                foreach (var pkg in _base)
-                {
-                    console.WriteKernelMessage("pacman: installing package: " + pkg);
-                    int len = 52;
-                    for (int i = 0; i <= pkg.Length; i++)
-                    {
-                        if(i > 0)
-                        {
-                            console.Write("\b".Repeat(len));
-                        }
-                        float percentage = (float)i / pkg.Length;
-                        int progressLength = (int)Math.Round(percentage * 50);
-                        string progressBar = "[" + "#".Repeat(progressLength) + "-".Repeat(50 - progressLength) + "]";
-                        console.Write(progressBar);
-                        Thread.Sleep(75);
-                    }
-                    console.WriteLine("");
-                    console.WriteKernelMessage("Done.");
-                    Thread.Sleep(100);
-                }
-                console.WriteLine("Waiting for setup environment...");
-                _os.PreventStartup = true;
-                new Tutorial.PeacegateSetup(_winsys, tutorial).Show(0, 0);
+                console.WriteLine("Connecting to The Peacenet...");
+
+                Thread.Sleep(250);
+
+                console.WriteLine("");
+                console.WriteLine("Connection successful.");
+
+                _pause.WaitOne();
+                _pause.Reset();
             }
             else
             {
-                console.WriteLine("Loading GUI settings...");
-                var accent = _save.GetValue<PeacenetAccentColor>("theme.accent", PeacenetAccentColor.Blueberry);
-                _pn.AccentColor = accent;
+                _cutscene.Play("m00_watercolor", () =>
+                {
+                    _pause.Set();
+                });
+                _pause.WaitOne();
+                _pause.Reset();
+
+                foreach (var message in _kernelBootMessages)
+                {
+                    console.WriteKernelMessage(message);
+                    Thread.Sleep(75);
+                }
+
+                console.WriteLine("");
+                console.WriteLine("Formatting /dev/sda1 as ext4...");
+
+                _cutscene.Play("m00_alkaline", () =>
+                {
+                    _pause.Set();
+                });
+
+                Thread.Sleep(750);
+                console.WriteLine("");
+                console.WriteLine("Mounting /dev/sda1 to /mnt...");
+
+                _pause.WaitOne();
+                _pause.Reset();
+
+                _cutscene.Play("m00_peaceengine", () =>
+                {
+                    _pause.Set();
+                });
+
+                console.WriteLine("");
+                RecursiveWriteDirectories(console, "/");
+
+                _pause.WaitOne();
+                _pause.Reset();
+
+                console.WriteLine("");
+                console.WriteLine("Starting installation environment.");
+
+                _cutscene.Play("m00_welcome", () =>
+                {
+                    _pause.Set();
+                });
+
+                Thread.Sleep(500);
+
+                console.WriteLine("");
+                console.WriteLine("Connecting to The Peacenet...");
+
+                Thread.Sleep(250);
+
+                console.WriteLine("");
+                console.WriteLine("Connection successful.");
+
+                _pause.WaitOne();
+                _pause.Reset();
             }
+        }
+
+        private SoundEffectInstance _beep1 = null;
+        private SoundEffectInstance _beep2 = null;
+        private SoundEffectInstance _success = null;
+
+
+        public void Load(ContentManager content)
+        {
+            _beep1 = content.Load<SoundEffect>("Audio/BootBeep1").CreateInstance();
+            _beep2 = content.Load<SoundEffect>("Audio/BootBeep2").CreateInstance();
+            _success = content.Load<SoundEffect>("Audio/BootObjectiveSuccess").CreateInstance();
+
         }
     }
 
@@ -316,7 +317,7 @@ namespace Peacenet
             console.SetColors(Plex.Objects.ConsoleColor.Black, Plex.Objects.ConsoleColor.White);
             console.SetBold(false);
             console.SlowWrite(message);
-            Thread.Sleep(3000);
+            Thread.Sleep(500);
         }
     }
 
@@ -435,11 +436,6 @@ namespace Peacenet
         }
 
         /// <inheritdoc/>
-        public void OnMouseUpdate(MouseState mouse)
-        {
-        }
-
-        /// <inheritdoc/>
         public void Update(GameTime time)
         {
             switch(_animState)
@@ -533,10 +529,7 @@ namespace Peacenet
             _tutorialDescription.AutoSize = true;
             _tutorialLabel.FontStyle = TextFontStyle.Header1;
 
-            _tutorialButton.Click += (o, a) =>
-            {
-                _tutorialStage++;
-            };
+            
         }
 
         /// <inheritdoc/>
@@ -549,16 +542,14 @@ namespace Peacenet
         {
         }
 
-        /// <inheritdoc/>
-        public void OnMouseUpdate(MouseState mouse)
-        {
-        }
-
         [Dependency]
         private SaveManager _save = null;
 
         [Dependency]
-        private Plexgate _plexgate = null;
+        private GameLoop _GameLoop = null;
+
+        [Dependency]
+        private GameManager _game = null;
 
         /// <inheritdoc/>
         public void Update(GameTime time)
@@ -790,8 +781,8 @@ namespace Peacenet
                         _tutorialDescription.Dispose();
                         _hitbox.Dispose();
                         _tutorialButton.Dispose();
-                        _save.SetValue("boot.hasDoneCmdTutorial", true);
-                        _plexgate.GetLayer(LayerType.UserInterface).RemoveEntity(this);
+                        _game.State.TutorialCompleted = true;
+                        _GameLoop.GetLayer(LayerType.UserInterface).RemoveEntity(this);
                         this._music.StopNext();
                         _tutorialStage++;
                         break;
@@ -832,7 +823,7 @@ namespace Peacenet
             {
                 case 0:
                     _colorFade += (float)time.ElapsedGameTime.TotalSeconds;
-                    Invalidate(true);
+                    
                     if(_colorFade >= 1)
                     {
                         _colorFade = 1;
@@ -841,7 +832,7 @@ namespace Peacenet
                     break;
                 case 1:
                     _colorFade -= (float)time.ElapsedGameTime.TotalSeconds;
-                    Invalidate(true);
+                    
                     if (_colorFade <= 0)
                     {
                         _colorFade = 0;
@@ -856,7 +847,7 @@ namespace Peacenet
         /// <inheritdoc/>
         protected override void OnPaint(GameTime time, GraphicsContext gfx)
         {
-            gfx.DrawRectangle(0, 0, Width, Height, Theme.GetAccentColor() * _colorFade);
+            gfx.FillRectangle(0, 0, Width, Height, Theme.GetAccentColor() * _colorFade);
         }
     }
 }

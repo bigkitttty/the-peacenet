@@ -32,7 +32,7 @@ namespace Peacenet
         private HttpServer _callbackSrv = null;
 
         [Dependency]
-        private Plexgate _plebgate = null;
+        private GameLoop _plebgate = null;
 
         [Dependency]
         private ConfigManager _config = null;
@@ -69,6 +69,8 @@ namespace Peacenet
         /// <inheritdoc/>
         public void Initiate()
         {
+            _config.GetValue("itch.showUsername", false); //set default value to false. User can choose if they want to display their itch username in Peacegate OS.
+
             _entity = _plebgate.New<ItchEntity>();
             _token = _config.GetValue<string>("itch.apikey", _token);
             _callbackSrv = _plebgate.New<ItchOAuthCallbackServer>();
@@ -595,7 +597,7 @@ namespace Peacenet
         private ItchOAuthClient _oauth = null;
 
         [Dependency]
-        private Plexgate _plexgate = null;
+        private GameLoop _GameLoop = null;
 
         private string _head = "Waiting for itch.io login";
         private string _desc = @"You should see a browser window asking you to log in to itch.io or to authorize The Peacenet to access your account. Log in and authorize The Peacenet to sign in.
@@ -632,8 +634,6 @@ If you don't see a browser window, you may need to press F11 to exit Fullscreen 
 
         public void Draw(GameTime time, GraphicsContext gfx)
         {
-            gfx.BeginDraw();
-
             gfx.Clear(Color.Black * MathHelper.Lerp(0, 0.75F, _textHeadAnim));
 
             int _half = (gfx.Width - (gfx.Width / 2)) / 2;
@@ -656,17 +656,10 @@ If you don't see a browser window, you may need to press F11 to exit Fullscreen 
             int y = gfx.Y;
             int w = gfx.Width;
             int h = gfx.Height;
-            gfx.X = _button.X;
-            gfx.Y = _button.Y;
-            gfx.Width = _button.Width;
-            gfx.Height = _button.Height;
+            gfx.ScissorRectangle = new Rectangle(_button.X, _button.Y, _button.Width, _button.Height);
             _theme.Theme.DrawButton(gfx, _buttonText, null, GetButtonState(), false, Rectangle.Empty, new Rectangle(_buttonMarginH, _buttonMarginV, _button.Width - (_buttonMarginH * 2), _button.Height - (_buttonMarginV * 2)));
-            gfx.X = x;
-            gfx.Y = y;
-            gfx.Width = w;
-            gfx.Height = h;
+            gfx.ScissorRectangle = new Rectangle(x, y, w, h);
 
-            gfx.EndDraw();
         }
 
         private UIButtonState GetButtonState()
@@ -684,7 +677,7 @@ If you don't see a browser window, you may need to press F11 to exit Fullscreen 
             _textHeadAnim = 0;
             _textDescAnim = 0;
             _buttonAnim = 0;
-            _plexgate.GetLayer(LayerType.Foreground).AddEntity(this);
+            _GameLoop.GetLayer(LayerType.Foreground).AddEntity(this);
         }
 
         public void OnGameExit()
@@ -694,23 +687,6 @@ If you don't see a browser window, you may need to press F11 to exit Fullscreen 
 
         public void OnKeyEvent(KeyboardEventArgs e)
         {
-        }
-
-        public void OnMouseUpdate(MouseState mouse)
-        {
-            _buttonHovered = mouse.X >= _button.X && mouse.Y >= _button.Y && mouse.X <= _button.X + _button.Width && mouse.Y <= _button.Y + _button.Height;
-            if(_buttonHovered)
-            {
-                if(_buttonState == ButtonState.Pressed && mouse.LeftButton == ButtonState.Released)
-                {
-                    CancelLogin();
-                }
-                _buttonState = mouse.LeftButton;
-            }
-            else
-            {
-                _buttonState = ButtonState.Released;
-            }
         }
 
         private void CancelLogin()
@@ -768,7 +744,7 @@ If you don't see a browser window, you may need to press F11 to exit Fullscreen 
                         else
                         {
                             _ui.DoInput = true;
-                            _plexgate.GetLayer(LayerType.Foreground).RemoveEntity(this);
+                            _GameLoop.GetLayer(LayerType.Foreground).RemoveEntity(this);
                         }
                     }
                 }

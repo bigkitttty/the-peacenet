@@ -67,30 +67,21 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="AppLauncherManager.cs" />
-    <Compile Include="Applications\Appearance.cs" />
-    <Compile Include="Applications\Calculator.cs" />
-    <Compile Include="Applications\ChatClient.cs" />
     <Compile Include="Applications\Clock.cs" />
-    <Compile Include="Applications\CutscenePlayer.cs" />
-    <Compile Include="Applications\DesktopPanelSettings.cs" />
     <Compile Include="Applications\EmailViewer.cs" />
     <Compile Include="Applications\FileManager.cs" />
     <Compile Include="Applications\GameSettings.cs" />
     <Compile Include="Applications\GPLInfo.cs" />
-    <Compile Include="Applications\MissionMenu.cs" />
+    <Compile Include="Applications\ImageViewer.cs" />
+    <Compile Include="Applications\PeacegateInstaller.cs" />
     <Compile Include="Applications\ScreenScaleSetter.cs" />
     <Compile Include="Applications\SystemInitTerminal.cs" />
     <Compile Include="Applications\Terminal.cs" />
-    <Compile Include="Applications\TextEditorApp.cs" />
-    <Compile Include="Applications\ThemeChooser.cs" />
+    <Compile Include="Applications\TextEditor.cs" />
     <Compile Include="Applications\WorldMap.cs" />
-    <Compile Include="AsyncServerFSBackend.cs" />
-    <Compile Include="ChatBackend.cs" />
     <Compile Include="CoreUtils\date.cs" />
     <Compile Include="CoreUtils\echo.cs" />
-    <Compile Include="CountryChallenges\ChallengeManager.cs" />
-    <Compile Include="CountryChallenges\ICountryChallenge.cs" />
-    <Compile Include="CountryManager.cs" />
+    <Compile Include="Country.cs" />
     <Compile Include="cowsay.cs" />
     <Compile Include="CoreUtils\cat.cs" />
     <Compile Include="CoreUtils\cd.cs" />
@@ -102,28 +93,39 @@
     <Compile Include="Cutscene\OSFTOutro.cs" />
     <Compile Include="Cutscene\OSFTPeacegateIntro.cs" />
     <Compile Include="Cutscene\PrologueCutscene.cs" />
+    <Compile Include="Cutscene\Prologue\PeaceEngineCutscene.cs" />
+    <Compile Include="Cutscene\Prologue\Alkaline.cs" />
+    <Compile Include="Cutscene\Prologue\Watercolor.cs" />
+    <Compile Include="Cutscene\Prologue\WelcomeToThePeacenet.cs" />
     <Compile Include="DesktopUI\AppLauncherMenu.cs" />
+    <Compile Include="DesktopUI\NotificationBanner.cs" />
+    <Compile Include="DesktopUI\XPDisplay.cs" />
     <Compile Include="DesktopWindow.cs" />
-    <Compile Include="Email\EmailClient.cs" />
+    <Compile Include="Email\ClientEmailProvider.cs" />
+    <Compile Include="Email\EmailThread.cs" />
+    <Compile Include="Email\EmailMessage.cs" />
     <Compile Include="Filesystem\ClientMount.cs" />
     <Compile Include="Filesystem\ClientMounts\BinDirectory.cs" />
     <Compile Include="Filesystem\ClientMounts\MenuDirectory.cs" />
     <Compile Include="Filesystem\FileUtilities.cs" />
     <Compile Include="Filesystem\FSManager.cs" />
     <Compile Include="Filesystem\IFileHandler.cs" />
-    <Compile Include="GovernmentAlert\AlertBgmEntity.cs" />
-    <Compile Include="GovernmentAlert\AlertService.cs" />
+    <Compile Include="GameState\GameManager.cs" />
+    <Compile Include="GameState\IGameStateInfo.cs" />
+    <Compile Include="GameState\Sentience.cs" />
+    <Compile Include="GameState\SinglePlayerStateInfo.cs" />
     <Compile Include="HideInHelpAttribute.cs" />
     <Compile Include="InfoboxManager.cs" />
     <Compile Include="InitCommand.cs" />
     <Compile Include="ItchOAuthClient.cs" />
     <Compile Include="MainMenu\SplashEntity.cs" />
     <Compile Include="MissionManager.cs" />
+    <Compile Include="Missions\InstantCompleteMission.cs" />
     <Compile Include="Missions\MissionCompleteScreen.cs" />
-    <Compile Include="Missions\Prologue\SecuringTheSystem.cs" />
-    <Compile Include="Missions\Prologue\SideMissions\SentienceTriesOut.cs" />
-    <Compile Include="Missions\Prologue\TerminalTutorial.cs" />
-    <Compile Include="NPCSpawner.cs" />
+    <Compile Include="Missions\MissionFailScreen.cs" />
+    <Compile Include="Missions\Prologue\WelcomeToThePeacenet.cs" />
+    <Compile Include="Missions\Test\FailTest.cs" />
+    <Compile Include="Missions\Test\RichPresenceTest.cs" />
     <Compile Include="OS.cs" />
     <Compile Include="OSEntity.cs" />
     <Compile Include="PeacegateThemes\PanelThemes\PanelTheme.cs" />
@@ -135,22 +137,23 @@
     <Compile Include="PeacenetThemeManager.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
     <Compile Include="RichPresence\DiscordRPCModule.cs" />
-    <Compile Include="ServerSideSaveBackend.cs" />
-    <Compile Include="Server\AsyncServerManager.cs" />
-    <Compile Include="SimulateConnectionHandler.cs" />
+    <Compile Include="SpecialFolders\SpecialFolder.cs" />
     <Compile Include="SplashScreenComponent.cs" />
+    <Compile Include="TerminalCommands\connect.cs" />
     <Compile Include="TerminalCommands\HelpCommand.cs" />
     <Compile Include="TerminalCommands\NotificationTestCommand.cs" />
+    <Compile Include="TerminalCommands\UpgradeManager.cs" />
     <Compile Include="TerminalManager.cs" />
     <Compile Include="ThemeConfigurationCommand.cs" />
-    <Compile Include="Tutorial\PeacegateSetup.cs" />
-    <Compile Include="RemoteStreams.cs" />
-    <Compile Include="TerminalCommands\RemoteStreamsTestCommand.cs" />
-    <Compile Include="Applications\ImageViewer.cs" />
     <Compile Include="TerminalCommands\ImportCommand.cs" />
-    <Compile Include="Applications\KnowledgeInput.cs" />
     <Compile Include="Applications\FrameWatchTest.cs" />
+    <Compile Include="TerminalCommands\Fortune.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="DocoptNet, Version=0.6.1.4, Culture=neutral, PublicKeyToken=7a38c71da49a547e, processorArchitecture=MSIL">
@@ -159,6 +162,9 @@
     </Reference>
     <Reference Include="DynamicLua, Version=1.1.2.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\DynamicLua.1.1.2.0\lib\net40-Client\DynamicLua.dll</HintPath>
+    </Reference>
+    <Reference Include="LiteDB, Version=4.1.2.0, Culture=neutral, PublicKeyToken=4ee40123013c9f27, processorArchitecture=MSIL">
+      <HintPath>..\packages\LiteDB.4.1.2\lib\net40\LiteDB.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.VisualBasic" />
@@ -188,9 +194,28 @@
   <ItemGroup>
     <EmbeddedResource Include="Icon.ico" />
     <EmbeddedResource Include="Icon.bmp" />
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Content\Cutscenes\Prologue\peacenet icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\Cutscenes\Prologue\peacenet word.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Content\Desktop\ShiftOSSkin_Industrial.jpg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\Desktop\UIIcons\check-square.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\Desktop\UIIcons\clock-o.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\Desktop\UIIcons\flash.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Content\License.txt">
@@ -247,10 +272,43 @@
     <Content Include="Content\ThemePreviews\Industrial.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Content\UIIcons\arrow-circle-o-down.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\arrow-circle-o-downleft.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\arrow-circle-o-downright.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\arrow-circle-o-left.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\arrow-circle-o-right.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\arrow-circle-o-up.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\arrow-circle-o-upleft.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\arrow-circle-o-upright.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\folder-open-o.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Content\UIIcons\NotificationTray\Email.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Content\UIIcons\NotificationTray\EmailUnread.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\refresh.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\UIIcons\save.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Content\WorldMap\1.png">
@@ -277,6 +335,9 @@
     <Content Include="discord-rpc.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Include="Resources\StoryNPCs.txt" />
+    <None Include="Resources\SettingsData.txt" />
+    <None Include="Resources\Upgrades.txt" />
     <MonoGameContentReference Include="Content\Content.mgcb" />
     <None Include="$(MonoGameInstallDirectory)\MonoGame\v3.0\Assemblies\DesktopGL\MonoGame.Framework.dll.config">
       <Link>MonoGame.Framework.dll.config</Link>
@@ -293,10 +354,22 @@
     <Content Include="Content\Audio\Cutscene\CreditsAlt.ogg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Include="Content\Audio\BootBeep1.ogg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Content\Audio\BootBeep2.ogg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Content\Audio\BootObjectiveSuccess.ogg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="Content\Audio\Cutscene\Intro\Predeath.ogg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="Content\Audio\Cutscene\Prologue\Briefing.ogg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Content\Audio\Cutscene\Prologue\SineBeep2000.ogg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="Content\Audio\GovernmentAlert\Bgm1.ogg">
@@ -360,6 +433,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="Content\Hackables\SecuringTheSystem_TestHackable.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Content\SkillLevels.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="packages.config" />
@@ -585,6 +661,9 @@
     <Content Include="Content\Audio\Tutorial.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Content\fortunes.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\peace-engine\PeaceEngine\PeaceEngine.csproj">
@@ -595,9 +674,9 @@
       <Project>{a069089a-8962-4607-b2b2-4cf4a371066e}</Project>
       <Name>WatercolorGames.Utilities</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Peacenet.Backend\Peacenet.Backend.csproj">
-      <Project>{d0d04db3-08c9-4ea9-b64a-69596dbb9657}</Project>
-      <Name>Peacenet.Backend</Name>
+    <ProjectReference Include="..\peacenet-world-generator\Peacenet.WorldGenerator\Peacenet.WorldGenerator.csproj">
+      <Project>{50e4aa42-41d1-4c93-a2b1-80398d86e098}</Project>
+      <Name>Peacenet.WorldGenerator</Name>
     </ProjectReference>
     <ProjectReference Include="..\WatercolorGames.CommandLine\WatercolorGames.CommandLine.csproj">
       <Project>{583edb9b-f51c-4bc9-87ad-8bc203da5f92}</Project>
@@ -608,7 +687,11 @@
     <Service Include="{508349B6-6B84-4DF5-91F0-309BEEBAD82D}" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="CountryChallenges\" />
+    <Folder Include="GovernmentAlert\" />
+    <Folder Include="Missions\Prologue\SideMissions\" />
     <Folder Include="Themes\" />
+    <Folder Include="Tutorial\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="$(MSBuildExtensionsPath)\MonoGame\v3.0\MonoGame.Content.Builder.targets" />

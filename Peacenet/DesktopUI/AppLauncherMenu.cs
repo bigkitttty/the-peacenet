@@ -9,7 +9,6 @@ using Plex.Engine;
 using Peacenet.Filesystem;
 using Peacenet.Applications;
 using Microsoft.Xna.Framework.Graphics;
-using Peacenet.Server;
 using Plex.Engine.GraphicsSubsystem;
 
 namespace Peacenet.DesktopUI
@@ -64,10 +63,8 @@ namespace Peacenet.DesktopUI
         [Dependency]
         private InfoboxManager _infobox = null;
         [Dependency]
-        private Plexgate _plexgate = null;
-        [Dependency]
-        private AsyncServerManager _server = null;
-
+        private GameLoop _plexgate = null;
+        
         private AppLauncherSectionButton _apps = new AppLauncherSectionButton();
         private AppLauncherSectionButton _computer = new AppLauncherSectionButton();
         private AppLauncherSectionButton _settings = new AppLauncherSectionButton();
@@ -118,7 +115,7 @@ namespace Peacenet.DesktopUI
             if (string.IsNullOrWhiteSpace(_userFullName.Text))
                 _userFullName.Text = "Peacegate OS User";
             string itchUsername = (_itch.LoggedIn) ? _itch.User.username : "user";
-            string osEdition = _server.IsMultiplayer ? "Peacegate OS for Sentient Programs" : "Peacegate OS for Peacenet Uplink Kiosks - Pre-deployment Mode";
+            string osEdition = "Peacegate OS for Sentient Programs";
 
             _userHostname.Text = $"{itchUsername}@{_os.Hostname} ({osEdition})";
 
@@ -213,7 +210,7 @@ namespace Peacenet.DesktopUI
             };
             _leaveStacker.AddChild(leavePeacegate);
 
-            foreach(var cat in _al.GetAllCategories())
+            foreach(var cat in _al.GetAllCategories().OrderBy(z=>z))
             {
                 var item = new AppLauncherItem();
                 item.Name = cat;
@@ -239,7 +236,7 @@ namespace Peacenet.DesktopUI
             };
             _computerStacker.AddChild(runCommand);
 
-            foreach(var dir in _os.GetShellDirs())
+            foreach(var dir in _os.GetShellDirs().OrderBy(z=>z.FriendlyName))
             {
                 var shellItem = new AppLauncherItem();
                 shellItem.Icon = dir.Texture;
@@ -248,7 +245,7 @@ namespace Peacenet.DesktopUI
                 shellItem.Activated += () =>
                 {
                     var fm = new FileManager(WindowSystem);
-                    fm.SetCurrentDirectory(dir.Path);
+                    fm.CurrentPath = dir.Path;
                     fm.Show();
                 };
                 _computerStacker.AddChild(shellItem);
@@ -262,7 +259,7 @@ namespace Peacenet.DesktopUI
         private void SetupCategory(string category)
         {
             _appsCategoryStacker.Clear();
-            foreach(var item in _al.GetAllInCategory(category))
+            foreach(var item in _al.GetAllInCategory(category).OrderBy(x=>x.Attribute.Name))
             {
                 var albutton = new AppLauncherItem();
                 albutton.Name = item.Attribute.Name;
@@ -404,7 +401,6 @@ namespace Peacenet.DesktopUI
                 if (_active == value)
                     return;
                 _active = value;
-                Invalidate();
             }
         }
 
@@ -479,11 +475,11 @@ namespace Peacenet.DesktopUI
             if(_active)
             {
                 Theme.DrawControlDarkBG(gfx, 0, 0, Width, Height);
-                gfx.DrawRectangle(0, Height - 2, Width, 2, Theme.GetAccentColor());
+                gfx.FillRectangle(0, Height - 2, Width, 2, Theme.GetAccentColor());
             }
             else
             {
-                if(LeftMouseState == Microsoft.Xna.Framework.Input.ButtonState.Pressed || _name.LeftMouseState == Microsoft.Xna.Framework.Input.ButtonState.Pressed || _icon.LeftMouseState == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+                if(LeftButtonPressed || _name.LeftButtonPressed || _icon.LeftButtonPressed)
                 {
                     Theme.DrawControlDarkBG(gfx, 0, 0, Width, Height);
                 }
@@ -626,13 +622,13 @@ namespace Peacenet.DesktopUI
             var accent = Theme.GetAccentColor();
             var down = accent.Darken(0.5f);
             var hover = accent.Darken(0.25F);
-            if (LeftMouseState == Microsoft.Xna.Framework.Input.ButtonState.Pressed || _icon.LeftMouseState == Microsoft.Xna.Framework.Input.ButtonState.Pressed || _name.LeftMouseState == Microsoft.Xna.Framework.Input.ButtonState.Pressed || _description.LeftMouseState == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+            if (LeftButtonPressed || _icon.LeftButtonPressed || _name.LeftButtonPressed || _description.LeftButtonPressed)
             {
-                gfx.DrawRectangle(0, 0, Width, Height, down);
+                gfx.FillRectangle(0, 0, Width, Height, down);
             }
             else if (ContainsMouse)
             {
-                gfx.DrawRectangle(0, 0, Width, Height, hover);
+                gfx.FillRectangle(0, 0, Width, Height, hover);
             }
             else
             {
@@ -648,6 +644,7 @@ namespace Peacenet.DesktopUI
             int y = 0;
             foreach(var child in Children)
             {
+                child.Width = Width;
                 child.Y = y;
                 child.X = 0;
                 y += child.Height;

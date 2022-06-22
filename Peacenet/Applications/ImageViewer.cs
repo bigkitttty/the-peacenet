@@ -5,6 +5,8 @@ using Plex.Engine;
 using Peacenet.Filesystem;
 using Peacenet.CoreUtils;
 using System.IO;
+using Plex.Engine.GraphicsSubsystem;
+using Microsoft.Xna.Framework;
 
 namespace Peacenet
 {
@@ -15,13 +17,13 @@ namespace Peacenet
         FSManager fs;
 
         [Dependency]
-        Plexgate plex;
+        GameLoop plex;
 
         [Dependency]
         GUIUtils gui;
 
         Texture2D img;
-        Button open = new Button();
+        PictureBox open = new PictureBox();
 
         public ImageViewer(WindowSystem _winsys) : base(_winsys)
         {
@@ -29,8 +31,9 @@ namespace Peacenet
             Width = 640;
             Height = 480;
             AddChild(open);
-            open.Click += (sender, e) => gui.AskForFile(false, (path) => load(path));
+            open.Click += (sender, e) => gui.AskForFile(false, new[] { "image/bmp", "image/jpeg", "image/png" }, (path) => load(path));
             img = null;
+            open.Texture = plex.Content.Load<Texture2D>("UIIcons/folder-open-o");
         }
         void load(string path)
         {
@@ -42,14 +45,23 @@ namespace Peacenet
         {
             open.X = 3;
             open.Y = 3;
-            open.Text = "Open";
+            open.Width = 20;
+            open.Height = 20;
+
+            open.Tint = Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System);
+            if (open.LeftButtonPressed)
+                open.Tint = Theme.GetAccentColor().Darken(0.5F);
+            else if (open.ContainsMouse)
+                open.Tint = Theme.GetAccentColor();
+
         }
         protected override void OnPaint(Microsoft.Xna.Framework.GameTime time, Plex.Engine.GraphicsSubsystem.GraphicsContext gfx)
         {
             base.OnPaint(time, gfx);
             var drawy = open.Y + open.Height + 3;
-            if (img != null)   
-                gfx.DrawRectangle(0, drawy, Width, Height - drawy, img, System.Windows.Forms.ImageLayout.Zoom);
+            Theme.DrawControlDarkBG(gfx, 0, drawy, Width, Height - drawy);
+            if (img != null)
+                gfx.FillRectangle(0, drawy, Width, Height - drawy, img, Color.White, ImageLayout.Zoom);
         }
     }
 }

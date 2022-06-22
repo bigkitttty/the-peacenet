@@ -23,8 +23,8 @@ namespace Peacenet.Applications
 
         public Clock(WindowSystem _winsys) : base(_winsys)
         {
-            Width = 1000;
-            Height = 500;
+            Width = 500;
+            Height = 250;
             Title = "Clock";
 
             AddChild(_head);
@@ -71,7 +71,7 @@ namespace Peacenet.Applications
 
 
 
-            Invalidate(true);
+            
         }
 
         protected override void OnPaint(GameTime time, GraphicsContext gfx)
@@ -80,9 +80,9 @@ namespace Peacenet.Applications
 
             var accent = Theme.GetAccentColor();
 
-            gfx.DrawCircle(_clockRectangle.Center.ToVector2(), (_clockRectangle.Width / 2), Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System));
-            gfx.DrawCircle(_clockRectangle.Center.ToVector2(), ((_clockRectangle.Width / 2) - 4), Theme.ControlBG);
-            gfx.DrawCircle(_clockRectangle.Center.ToVector2(), ((_clockRectangle.Width / 2)/10), accent);
+            gfx.FillCircle(_clockRectangle.Center.ToVector2(), (_clockRectangle.Width / 2), Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System));
+            gfx.FillCircle(_clockRectangle.Center.ToVector2(), ((_clockRectangle.Width / 2) - 4), Theme.ControlBG);
+            gfx.FillCircle(_clockRectangle.Center.ToVector2(), ((_clockRectangle.Width / 2)/10), accent);
 
             var secondEnd = getPointOnCircle(_clockRectangle.Center.ToVector2(), (_clockRectangle.Width / 2) - 16, _secondsDegrees-90);
             var hourEnd = getPointOnCircle(_clockRectangle.Center.ToVector2(), (_clockRectangle.Width / 2) / 4, _hoursDegrees-90);
@@ -92,7 +92,7 @@ namespace Peacenet.Applications
             gfx.DrawLine(_clockRectangle.Center.ToVector2(), hourEnd, 2, Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System));
             gfx.DrawLine(_clockRectangle.Center.ToVector2(), minuteEnd, 2, accent);
 
-            gfx.DrawCircle(_clockRectangle.Center.ToVector2(), ((_clockRectangle.Width / 2) / 10), accent);
+            gfx.FillCircle(_clockRectangle.Center.ToVector2(), ((_clockRectangle.Width / 2) / 10), accent);
         }
     }
 }

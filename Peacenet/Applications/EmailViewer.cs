@@ -1,326 +1,257 @@
 ﻿using Microsoft.Xna.Framework;
+using Peacenet.DesktopUI;
 using Peacenet.Email;
+using Plex.Engine;
+using Plex.Engine.GraphicsSubsystem;
 using Plex.Engine.GUI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Plex.Engine;
-using Plex.Engine.GraphicsSubsystem;
-using Peacenet.DesktopUI;
 
 namespace Peacenet.Applications
 {
-    [AppLauncher("Email Viewer", "Networking", "View your inbox, send emails and reply to incoming emails.")]
+    [AppLauncher("Email Viewer", "Networking", "View, manage, send and reply to Peacenet emails.")]
     public class EmailViewer : Window
     {
-        [Dependency]
-        private EmailClient _email = null;
-
-        [Dependency]
-        private InfoboxManager _infobox = null;
-
-        private ScrollView _sidebar = new ScrollView();
-        private ListView _sidebarView = new ListView();
+        private Stacker _inboxStacker = new Stacker();
+        private ScrollView _view = new ScrollView();
+        private int _state = 0;
 
         private Label _header = new Label();
+        private EmailThread _currentThread = null;
 
-        private ScrollView _body = new ScrollView();
-        private Panel _bodyView = new Panel();
+        [Dependency]
+        private MissionManager _mission = null;
 
-        private Button _compose = new Button();
-
-        private ListView _inbox = new ListView();
-        private ListView _outbox = new ListView();
-        private Stacker _thread = new Stacker();
-
-        private int _uiState = 0;
-
-        private string _subject = null;
-
-        private Panel _composePanel = new Panel();
-        private Panel _replyPanel = new Panel();
-
-        private TextBox _composeSubject = new TextBox();
-        private TextBox _composeTo = new TextBox();
-        private TextEditor _composeMessage = new TextEditor();
-        private TextEditor _replyMessage = new TextEditor();
-
-        private string[] _addresses = null;
-
-        private void SetupMainUI()
-        {
-            _compose.Text = "Compose";
-            _bodyView.Clear();
-            List<string> _subjects = new List<string>();
-            switch (_uiState)
-            {
-                case 0: //inbox
-                    _header.Text = "Inbox";
-                    _inbox.ClearItems();
-                    foreach(var message in _email.Inbox.OrderByDescending(x=>x.Timestamp))
-                    {
-                        if (_subjects.Contains(message.Subject))
-                            continue;
-                        var item = new ListViewItem
-                        {
-                            Tag = message.Subject,
-                            Value = $"{message.Subject} - {message.From}"
-                        };
-                        _inbox.AddItem(item);
-                        _subjects.Add(message.Subject);
-                    }
-                    _bodyView.AddChild(_inbox);
-                    break;
-                case 1: //outbox
-                    _header.Text = "Outbox";
-                    _outbox.ClearItems();
-                    foreach (var message in _email.Outbox.OrderByDescending(x => x.Timestamp))
-                    {
-                        if (_subjects.Contains(message.Subject))
-                            continue;
-                        var item = new ListViewItem
-                        {
-                            Tag = message.Subject,
-                            Value = $"{message.Subject} - {message.To}"
-                        };
-                        _outbox.AddItem(item);
-                        _subjects.Add(message.Subject);
-                    }
-                    _bodyView.AddChild(_outbox);
-                    break;
-                case 2: //view message
-                    _compose.Text = "Reply";
-                    _header.Text = _subject;
-                    _thread.Clear();
-                    foreach (var message in _email.GetThread(_subject))
-                    {
-                        var panel = new EmailMessagePanel();
-                        panel.Subject = message.Subject;
-                        panel.From = message.From;
-                        panel.Message = message.Message;
-                        _thread.AddChild(panel);
-                    }
-                    _bodyView.AddChild(_thread);
-                    break;
-                case 3: //compose message
-                    _header.Text = "Compose message";
-                    _compose.Text = "Send";
-                    _composeMessage.Text = "";
-                    _composeSubject.Text = "";
-                    _composeTo.Text = "";
-                    _bodyView.AddChild(_composePanel);
-                    break;
-                case 4: //compose reply
-                    _header.Text = _subject;
-                    _compose.Text = "Send";
-                    _replyMessage.Text = "";
-                    _bodyView.AddChild(_replyPanel);
-                    var addresses = new List<string>();
-                    foreach(var message in _email.GetThread(_subject))
-                    {
-                        if (message.From == _email.MyEmailAddress || addresses.Contains(message.From))
-                            continue;
-                        addresses.Add(message.From);
-                    }
-                    _addresses = addresses.ToArray();
-                    break;
-            }
-        }
+        [Dependency]
+        private GameManager _game = null;
 
         public EmailViewer(WindowSystem _winsys) : base(_winsys)
         {
-            Width = 750;
-            Height = 500;
+            Width = 615;
+            Height = 375;
+            Title = "Email Viewer";
 
-            AddChild(_sidebar);
-            AddChild(_body);
             AddChild(_header);
-            AddChild(_compose);
+            AddChild(_view);
 
-            _compose.Click += (o, a) =>
-            {
-                switch(_uiState)
-                {
-                    case 0:
-                    case 1:
-                        _uiState = 3;
-                        SetupMainUI();
-                        break;
-                    case 2:
-                        _uiState = 4;
-                        SetupMainUI();
-                        break;
-                    case 3:
-                        if (string.IsNullOrWhiteSpace(_composeSubject.Text))
-                        {
-                            _composeSubject.Text = "(No subject)";
-                        }
-                        if (string.IsNullOrWhiteSpace(_composeTo.Text))
-                        {
-                            _infobox.Show("No recipient specified.", "Who should we send this message to? You can't specify a blank recipient!");
-                            return;
-                        }
-
-                        if (string.IsNullOrWhiteSpace(_composeMessage.Text))
-                        {
-                            _infobox.Show("Blank reply", "You can't send a blank message. Please try again.");
-                            return;
-                        }
-                        _email.SendMessage(_composeTo.Text, _composeSubject.Text, _composeMessage.Text);
-                        _uiState = 1;
-                        SetupMainUI();
-                        break;
-                    case 4:
-                        if(string.IsNullOrWhiteSpace(_replyMessage.Text))
-                        {
-                            _infobox.Show("Blank reply", "You can't send a blank message. Please try again.");
-                            return;
-                        }
-                        foreach(var address in _addresses)
-                        {
-                            _email.SendMessage(address, _subject, _replyMessage.Text);
-                        }
-                        _uiState = 1;
-                        SetupMainUI();
-                        break;
-                }
-            };
-
-            _body.AddChild(_bodyView);
-            _sidebar.AddChild(_sidebarView);
-            _sidebarView.Layout = ListViewLayout.List;
-            _inbox.Layout = ListViewLayout.List;
-            _outbox.Layout = ListViewLayout.List;
-            _sidebarView.AddItem(new ListViewItem
-            {
-                Value = "Inbox",
-                Tag = 0
-            });
-            _sidebarView.AddItem(new ListViewItem
-            {
-                Value = "Sent messages",
-                Tag = 1
-            });
-
-            _sidebarView.ItemClicked += (item) =>
-            {
-                _uiState = (int)item.Tag;
-                SetupMainUI();
-            };
-            _inbox.ItemClicked += (item) =>
-            {
-                _subject = item.Tag.ToString();
-                _uiState = 2;
-                SetupMainUI();
-            };
-            _outbox.ItemClicked += (item) =>
-            {
-                _subject = item.Tag.ToString();
-                _uiState = 2;
-                SetupMainUI();
-            };
             _header.FontStyle = Plex.Engine.Themes.TextFontStyle.Header1;
-            SetupMainUI();
+            _header.AutoSize = true;
 
-            _composePanel.AutoSize = true;
-            _composePanel.AddChild(_composeTo);
-            _composePanel.AddChild(_composeSubject);
-            _composePanel.AddChild(_composeMessage);
-            _replyPanel.AutoSize = true;
-            _replyPanel.AddChild(_replyMessage);
+            _inboxStacker.AutoSize = true;
 
-            _thread.AutoSize = true;
+            SetupUI();
         }
 
-
-        protected override void OnPaint(GameTime time, GraphicsContext gfx)
+        private void SetupUI()
         {
-            Theme.DrawControlDarkBG(gfx, 0, 0, Width, Height);
+            _view.Clear();
+            switch (_state)
+            {
+                case 0:
+                    _header.Text = "Inbox";
+                    _view.AddChild(_inboxStacker);
+                    _inboxStacker.Clear();
+                    var threads = _game.State.Emails.Where(x => _game.State.GetMessages(x.Id).FirstOrDefault(y => y.To == "{you}") != null).OrderBy(x => x.Sent);
+                    var head = new EmailSubjectDisplay();
+                    head.Subject = "Subject";
+                    head.Time = "Last message time";
+                    head.FromTo = "Author(s)";
+                    head.IsUnread = false;
+                    head.Enabled = false;
+                    _inboxStacker.AddChild(head);
+                    if(threads.Count()==0)
+                    {
+                        var noMessages = new EmailSubjectDisplay();
+                        noMessages.Subject = "No messages to display.";
+                        noMessages.Enabled = false;
+                        noMessages.IsUnread = false;
+                        _inboxStacker.AddChild(noMessages);
+
+                    }
+                    foreach(var thread in threads)
+                    {
+                        var display = new EmailSubjectDisplay();
+                        string from = "";
+                        foreach(var message in _game.State.GetMessages(thread.Id))
+                        {
+                            string toName = (message.To == "{you}") ? "me" : message.To.Substring(0, message.To.LastIndexOf("@"));
+                            string fromName = (message.From == "{you}") ? "me" : message.From.Substring(0, message.From.LastIndexOf("@"));
+
+                            if(!from.Contains(fromName))
+                            {
+                                if (from.Length > 0)
+                                    from += ", ";
+                                from += fromName;
+                            }
+                            if (!from.Contains(toName))
+                            {
+                                if (from.Length > 0)
+                                    from += ", ";
+                                from += toName;
+                            }
+
+                        }
+                        display.FromTo = from;
+                        display.Subject = thread.Subject;
+                        var time = _game.State.GetMessages(thread.Id).OrderByDescending(x => x.Sent).First().Sent;
+                        display.Time = time.ToShortDateString() + " " + time.ToShortTimeString();
+                        display.IsUnread = _game.State.GetMessages(thread.Id).Where(x => x.IsUnread).Count() > 0;
+                        display.Click += (o, a) =>
+                        {
+                            _currentThread = thread;
+                            _state = 1;
+                            SetupUI();
+                        };
+                        _inboxStacker.AddChild(display);
+                    }
+                    break;
+                case 1:
+                    _header.Text = _currentThread.Subject;
+                    _view.AddChild(_inboxStacker);
+                    _inboxStacker.Clear();
+                    foreach (var message in _game.State.GetMessages(_currentThread.Id).OrderBy(x=>x.Sent))
+                    {
+                        if (message.IsUnread)
+                            _game.State.MarkRead(message.Id);
+                        var display = new EmailMessageDisplay();
+                        display.Header = $"From {message.From} to {message.To} at {message.Sent.ToShortDateString()} {message.Sent.ToShortTimeString()}".Replace("{you}", "me");
+                        display.Message = message.Message;
+                        display.MissionID = message.MissionID;
+                        display.MissionStart += () =>
+                          {
+                              var m = _mission.Available.FirstOrDefault(x => x.ID == display.MissionID);
+                              if(m!=null)
+                              {
+                                  Close();
+                                  m.Start();
+                              }
+                          };
+                        _inboxStacker.AddChild(display);
+                    }
+                    break;
+            }
         }
 
         protected override void OnUpdate(GameTime time)
         {
-            Title = $"{_email.MyEmailAddress} - Email Viewer";
-
-            _sidebar.X = 0;
-            _sidebar.Y = 0;
-            _sidebar.Width = 200;
-            _sidebar.Height = Height;
-
-            _sidebarView.Width = _sidebar.Width;
-
-            _header.AutoSize = true;
-            _header.X = _sidebar.Width + 15;
+            _header.X = 15;
             _header.Y = 15;
-            _header.MaxWidth = (((Width - _sidebar.Width) - _compose.Width) - 15) - 30;
+            _header.MaxWidth = Width - 30;
 
-            _compose.X = (Width - _compose.Width) - 15;
-            _compose.Y = _header.Y + ((_header.Height - _compose.Height) / 2);
+            _view.X = 0;
+            _view.Y = _header.Y + _header.Height + 7;
+            _view.Width = Width;
+            _view.Height = Height - _view.Y;
 
-            _body.X = _sidebar.Width;
-            _body.Y = _header.Y + _header.Height + 15;
-            _body.Width = Width - _body.X;
-            _body.Height = Height - _body.Y;
-
-            _bodyView.AutoSize = true;
-            _bodyView.Width = _body.Width;
-
-            _inbox.Width = _body.Width;
-            _outbox.Width = _body.Width;
-            _thread.Width = _body.Width;
-
-            _composePanel.Width = _body.Width;
-            _replyPanel.Width = _body.Width;
-
-            _replyMessage.Width = _replyPanel.Width - 30;
-            _replyMessage.AutoHeight = true;
-            _replyMessage.X = 15;
-            _replyMessage.Y = 15;
-
-            _composeTo.Label = "To...";
-            _composeTo.Width = _composePanel.Width - 30;
-            _composeTo.X = 15;
-            _composeTo.Y = 15;
-            _composeSubject.Label = "Subject...";
-            _composeSubject.X = 15;
-            _composeSubject.Y = _composeTo.Y + _composeTo.Height + 5;
-            _composeSubject.Width = _composeTo.Width;
-            _composeMessage.X = 15;
-            _composeMessage.Y = _composeSubject.Y + _composeSubject.Height + 10;
-            _composeMessage.Width = _composeTo.Width;
-            _composeMessage.AutoHeight = true;
+            _inboxStacker.Width = Width;
+            base.OnUpdate(time);
         }
     }
 
-    public class EmailMessagePanel : Control
+    public class EmailSubjectDisplay : Control
     {
-        private string _subject = "(No subject)";
-        private string _message = "";
-        private string _from = "mail@exo.no"; //not an easter egg
+        public string Subject { get; set; }
+        public string FromTo { get; set; }
+        public string Time { get; set; }
+        public bool IsUnread { get; set; }
 
-        public string From
+        protected override void OnPaint(GameTime time, GraphicsContext gfx)
+        {
+            if (Parent == null)
+                return;
+            var font = Theme.GetFont(Plex.Engine.Themes.TextFontStyle.System);
+
+            int textPad = 7;
+
+            int thirdWidth = (Width / 3) - (textPad * 2);
+
+            var subjectMeasure = TextRenderer.MeasureText(Subject, font, thirdWidth, Plex.Engine.TextRenderers.WrapMode.Words);
+            var timeMeasure = TextRenderer.MeasureText(Time, font, thirdWidth, Plex.Engine.TextRenderers.WrapMode.Words);
+            var fromMeasure = TextRenderer.MeasureText(FromTo, font, thirdWidth, Plex.Engine.TextRenderers.WrapMode.Words);
+
+            if(ContainsMouse)
+            {
+                gfx.FillRectangle(0, 0, Width, Height, Theme.GetAccentColor());
+            }
+            else if(IsUnread)
+            {
+                Theme.DrawControlLightBG(gfx, 0, 0, Width, Height);
+            }
+
+            gfx.DrawString(FromTo, new Vector2(textPad, (Height - fromMeasure.Y) / 2), Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System), font, TextAlignment.Left, thirdWidth, Plex.Engine.TextRenderers.WrapMode.Words);
+            gfx.DrawString(Subject, new Vector2((Width - thirdWidth) / 2, (Height - subjectMeasure.Y) / 2), Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System), font, TextAlignment.Left, thirdWidth, Plex.Engine.TextRenderers.WrapMode.Words);
+            gfx.DrawString(Time, new Vector2((Width - textPad)-thirdWidth, (Height - timeMeasure.Y) / 2), Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System), font, TextAlignment.Left, thirdWidth, Plex.Engine.TextRenderers.WrapMode.Words);
+        }
+
+        protected override void OnUpdate(GameTime time)
+        {
+            if (Parent == null)
+                return;
+            var font = Theme.GetFont(Plex.Engine.Themes.TextFontStyle.System);
+
+            int textPad = 7;
+
+            int thirdWidth = (Width / 3) - (textPad * 2);
+
+            var subjectMeasure = TextRenderer.MeasureText(Subject, font, thirdWidth, Plex.Engine.TextRenderers.WrapMode.Words);
+            var timeMeasure = TextRenderer.MeasureText(Time, font, thirdWidth, Plex.Engine.TextRenderers.WrapMode.Words);
+            var fromMeasure = TextRenderer.MeasureText(FromTo, font, thirdWidth, Plex.Engine.TextRenderers.WrapMode.Words);
+
+            Height = (textPad * 2) + (int)Math.Max(Math.Max(subjectMeasure.Y, timeMeasure.Y), fromMeasure.Y);
+            Width = Parent.Width;
+
+            base.OnUpdate(time);
+        }
+
+    }
+
+    public class EmailMessageDisplay : Control
+    {
+        private Label _head = new Label();
+        private Label _message = new Label();
+        private Button _missionButton = new Button();
+        private string _missionID = null;
+
+        [Dependency]
+        private MissionManager _mission = null;
+
+        public EmailMessageDisplay()
+        {
+            AddChild(_head);
+            AddChild(_message);
+            AddChild(_missionButton);
+            _missionButton.Click += (o, a) =>
+            {
+                MissionStart?.Invoke();
+            };
+        }
+
+        public event Action MissionStart;
+
+        public string MissionID
         {
             get
             {
-                return _from;
+                return _missionID;
             }
             set
             {
-                _from = value;
+                _missionID = value;
             }
         }
 
-        public string Subject
+        public string Header
         {
             get
             {
-                return _subject;
+                return _head.Text;
             }
             set
             {
-                _subject = value;
+                _head.Text = value;
             }
         }
 
@@ -328,12 +259,19 @@ namespace Peacenet.Applications
         {
             get
             {
-                return _message;
+                return _message.Text;
             }
             set
             {
-                _message = value;
+                _message.Text = value;
             }
+        }
+
+        protected override void OnPaint(GameTime time, GraphicsContext gfx)
+        {
+            if (Parent == null)
+                return;
+            Theme.DrawControlLightBG(gfx, 15, 15, Width - 30, Height - 30);
         }
 
         protected override void OnUpdate(GameTime time)
@@ -341,38 +279,50 @@ namespace Peacenet.Applications
             if (Parent == null)
                 return;
 
-            Width = Parent.Width - 30;
-            X = 15;
+            bool hasMission = !string.IsNullOrWhiteSpace(_missionID) && !_mission.IsPlayingMission;
+            if(hasMission)
+            {
+                var m = _mission.Available.FirstOrDefault(x => x.ID == _missionID);
+                if (m == null)
+                    hasMission = false;
+                else
+                {
+                    _missionButton.Text = $"Start \"{m.Name}\"";
+                }
+            }
 
+            _missionButton.Visible = hasMission;
 
-            var header = Theme.GetFont(Plex.Engine.Themes.TextFontStyle.Header3);
-            var highlight = Theme.GetFont(Plex.Engine.Themes.TextFontStyle.Highlight);
-            var body = Theme.GetFont(Plex.Engine.Themes.TextFontStyle.System);
+            _missionButton.X = (Width - 45) - _missionButton.Width;
+            
 
-            var headMeasure = TextRenderer.MeasureText(_subject, header, Width - 30, Plex.Engine.TextRenderers.WrapMode.Words);
-            var fromMeasure = TextRenderer.MeasureText(_from, highlight, Width - 30, Plex.Engine.TextRenderers.WrapMode.Words);
-            var bodyMeasure = TextRenderer.MeasureText(_message, body, Width - 30, Plex.Engine.TextRenderers.WrapMode.Words);
+            Width = Parent.Width;
 
-            Height = 15 + (int)headMeasure.Y + 5 + (int)fromMeasure.Y + 10 + (int)bodyMeasure.Y + 30;
-        }
+            int labelWidth = Width - 60;
 
-        protected override void OnPaint(GameTime time, GraphicsContext gfx)
-        {
-            Theme.DrawControlDarkBG(gfx, 0, 0, Width, Height);
-            Theme.DrawControlBG(gfx, 0, 0, Width, Height - 15);
+            _head.MaxWidth = labelWidth;
+            _message.MaxWidth = labelWidth;
 
-            var header = Theme.GetFont(Plex.Engine.Themes.TextFontStyle.Header3);
-            var highlight = Theme.GetFont(Plex.Engine.Themes.TextFontStyle.Highlight);
-            var body = Theme.GetFont(Plex.Engine.Themes.TextFontStyle.System);
+            _head.AutoSize = true;
+            _message.AutoSize = true;
+            _head.FontStyle = Plex.Engine.Themes.TextFontStyle.Header3;
 
-            var headMeasure = TextRenderer.MeasureText(_subject, header, Width - 30, Plex.Engine.TextRenderers.WrapMode.Words);
-            var fromMeasure = TextRenderer.MeasureText(_from, highlight, Width - 30, Plex.Engine.TextRenderers.WrapMode.Words);
-            var bodyMeasure = TextRenderer.MeasureText(_message, body, Width - 30, Plex.Engine.TextRenderers.WrapMode.Words);
+            _head.X = 30;
+            _head.Y = 30;
+            _message.X = 30;
+            _message.Y = _head.Y + _head.Height + 7;
 
-            gfx.DrawString(_subject, 15, 15, Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.Header3), header, TextAlignment.Left, Width - 30, Plex.Engine.TextRenderers.WrapMode.Words);
-            gfx.DrawString(_from, 15, 15 + (int)headMeasure.Y + 5, Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.Highlight), highlight, TextAlignment.Left, Width - 30, Plex.Engine.TextRenderers.WrapMode.Words);
-            gfx.DrawString(_message, 15, 15 + (int)headMeasure.Y + 5 + (int)fromMeasure.Y + 10, Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System), body, TextAlignment.Left, Width - 30, Plex.Engine.TextRenderers.WrapMode.Words);
+            _missionButton.Y = _message.Y + _message.Height + 10;
 
+            if (_missionButton.Visible)
+            {
+                Height = _missionButton.Y + _missionButton.Height + 45;
+            }
+            else
+            { 
+                Height = _message.Y + _message.Height + 30;
+            }
+            base.OnUpdate(time);
         }
     }
 }

@@ -1,513 +1,550 @@
-﻿using Plex.Engine;
-using Plex.Engine.GUI;
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Peacenet.Filesystem;
 using Peacenet.CoreUtils;
+using Peacenet.Filesystem;
+using Plex.Engine;
+using Plex.Engine.GUI;
 
 namespace Peacenet.Applications
 {
-    /// <summary>
-    /// Provides a graphical user interface allowing the player to browse and manage files and folders in their in-game hard drive.
-    /// </summary>
-    [AppLauncher("File browser", "Accessories", "Manage your computer's files")]
+    [AppLauncher("File Manager", "System", "View and manage the files and folders on your system.")]
     public class FileManager : Window
     {
-        private ScrollView _places = new ScrollView();
-        private ListView _placesView = new ListView();
-        private ScrollView _files = new ScrollView();
-        private ListView _filesView = new ListView();
-        private Button _back = new Button();
-        private Button _forward = new Button();
-        private Label _path = new Label();
-        private TextBox _search = new TextBox();
-        private Button _searchButton = new Button();
-        private Button _newFolder = new Button();
+        private Stack<string> _prevStack = new Stack<string>();
+        private Stack<string> _nextStack = new Stack<string>();
 
 
-        [Dependency]
-        private Plexgate _plexgate = null;
+        private Label _pathLabel = new Label();
+        private PictureBox _back = new PictureBox();
+        private PictureBox _forward = new PictureBox();
+        private PictureBox _newFolder = new PictureBox();
+        private PictureBox _up = new PictureBox();
+        private PictureBox _refresh = new PictureBox();
 
-        [Dependency]
-        private FSManager _fs = null;
+        private PictureBox _action = new PictureBox();
+        private Texture2D _save = null;
+        private Texture2D _open = null;
+        private TextBox _filename = new TextBox();
 
-        private Stack<string> _pastLocs = new Stack<string>();
-        private Stack<string> _futureLocs = new Stack<string>();
+        private const int _toolbarIconSize = 20;
 
-        private Button _open = new Button();
-        private TextBox _openField = new TextBox();
+        private ScrollView _sidebarView = new ScrollView();
+        private ScrollView _filesView = new ScrollView();
 
-        [Dependency]
-        private OS _os = null;
+        private ListBox _sidebarFolderList = new ListBox();
+
+        private GridListView _fileList = new GridListView();
+
+        private string _currentPath = "/home";
+
+        private string[] _filter = null;
+
+        private FileManagerMode _mode = FileManagerMode.Browse;
 
         [Dependency]
         private FileUtils _futils = null;
 
-        private bool _isDialog = false;
+        [Dependency]
+        private FSManager _fs = null;
 
-        private bool _showHidden = false;
+        [Dependency]
+        private InfoboxManager _infobox = null;
 
-        private string _currentDirectory = "/";
+        [Dependency]
+        private GameLoop _gameloop = null;
 
-        private Action<string> _openCallback = null;
+        [Dependency]
+        private OS _os = null;
 
-        private bool _isSaving = false;
-
-        /// <summary>
-        /// Sets a callback <see cref="Action"/> to be run when the user selects a file path. Setting the callback to null transforms the GUI into "browse mode", as if the file manager was opened from the App Launcher or command-line. Setting it to anything else will transform the GUI into either "open mode" or "save mode" depending on the value of <paramref name="isSaving"/>. When the callback is run, the GUI is closed and the <see cref="string"/> argument of the callback is populated with an absolute path to the file the player selected. 
-        /// </summary>
-        /// <param name="callback">A callback to be run when the user selects a file. Set to null to disable dialog mode.</param>
-        /// <param name="isSaving">If in dialog mode, whether or not the player is saving a file.</param>
-        public void SetDialogCallback(Action<string> callback, bool isSaving)
+        public string[] FileFilter
         {
-            _isSaving = isSaving;
-            if (callback == null)
-                _isDialog = false;
+            get
+            {
+                return _filter;
+            }
+            set
+            {
+                _filter = value;
+                ResetLists();
+            }
+        }
+        public FileManagerMode Mode
+        {
+            get
+            {
+                return _mode;
+            }
+            set
+            {
+                _mode = value;
+                ResetLists();
+            }
+        }
+
+
+        private Texture2D _directoryTexture = null;
+
+        public string CurrentPath
+        {
+            get
+            {
+                return _currentPath;
+            }
+            set
+            {
+                if (_currentPath == value)
+                    return;
+
+                if (value == null)
+                    throw new ArgumentNullException(nameof(value));
+
+                if (!_fs.DirectoryExists(value))
+                    throw new DirectoryNotFoundException($"The directory \"{value}\" does not exist.");
+
+                _currentPath = value;
+                ResetLists();
+            }
+        }
+
+        private void ResetLists()
+        {
+            var shellPaths = _os.GetShellDirs().ToArray();
+            var foundPath = shellPaths.OrderByDescending(x => x.Path.Length).FirstOrDefault(x => _currentPath.StartsWith(x.Path));
+            int sidebarSelected = -1;
+            if (foundPath != ShellDirectoryInformation.Empty)
+                sidebarSelected = Array.IndexOf(shellPaths, foundPath);
+
+            _fileList.Items.Clear();
+            _sidebarFolderList.Items.Clear();
+
+            foreach(var item in shellPaths)
+            {
+                _sidebarFolderList.Items.Add(item);
+            }
+            _sidebarFolderList.SelectedIndex = sidebarSelected;
+
+            foreach(var dir in _fs.GetDirectories(_currentPath))
+            {
+                var name = _futils.GetNameFromPath(dir);
+                if (name.StartsWith("."))
+                    continue;
+                _fileList.Items.Add(new ListViewItem(name, "dir", dir));
+            }
+
+            foreach (var file in _fs.GetFiles(_currentPath))
+            {
+                var name = _futils.GetNameFromPath(file);
+                if (name.StartsWith("."))
+                    continue;
+                if (_mode != FileManagerMode.Browse && _filter != null && _filter.Length > 0)
+                    if (!_filter.Contains(_futils.GetMimeType(name)))
+                        continue;
+
+                var mime = _futils.GetMimeType(name);
+                var existingMimeIcon = _fileList.GetImage(mime);
+                if (existingMimeIcon == null)
+                    _fileList.SetImage(mime, _futils.GetMimeIcon(mime));
+
+                _fileList.Items.Add(new ListViewItem(name, mime, file));
+            }
+
+            if (_mode == FileManagerMode.Browse)
+            {
+                _action.Visible = false;
+                _filename.Visible = false;
+            }
             else
             {
-                _isDialog = true;
-            }
-            _openCallback = callback;
-        }
-
-        /// <summary>
-        /// Changes the current directory of the GUI.
-        /// </summary>
-        /// <param name="dir">A path pointing to an existing Peacenet directory within the player's in-game FS.</param>
-        public void SetCurrentDirectory(string dir)
-        {
-            if (_fs.DirectoryExists(dir))
-            {
-                _needsReset = true;
-                _pastLocs.Clear();
-                _futureLocs.Clear();
-                _currentDirectory = dir;
+                _action.Visible = true;
+                _filename.Visible = true;
+             
+                _action.Texture = (_mode == FileManagerMode.SaveFile) ? _save : _open;
             }
         }
 
-        private void open(string filepath)
-        {
-            if (_isDialog)
-            {
-                if (_isSaving)
-                {
-                    if (_fs.FileExists(filepath))
-                    {
-                        Enabled = false;
-                        _infobox.ShowYesNo("Overwrite file", $"The file {filepath} already exists. Do you really want to overwrite it?", (answer) =>
-                        {
-                            Enabled = true;
-                            if (answer)
-                            {
-                                _openCallback?.Invoke(filepath);
-                                Close();
-                            }
-                        });
-                    }
-                    else
-                    {
-                        _openCallback?.Invoke(filepath);
-                        Close();
-                    }
-                }
-                else
-                {
-                    _openCallback?.Invoke(filepath);
-                    Close();
-                }
-            }
-        }
-
-
-        /// <inheritdoc/>
         public FileManager(WindowSystem _winsys) : base(_winsys)
         {
-            AddChild(_places);
-            AddChild(_files);
+            _directoryTexture = _gameloop.Content.Load<Texture2D>("UIIcons/folder");
+
+            AddChild(_pathLabel);
+            _pathLabel.AutoSize = true;
+
             AddChild(_back);
             AddChild(_forward);
-            AddChild(_path);
-            AddChild(_search);
-            AddChild(_searchButton);
+            AddChild(_up);
+            AddChild(_refresh);
             AddChild(_newFolder);
-            _places.AddChild(_placesView);
-            _files.AddChild(_filesView);
-            Width = 800;
-            Height = 600;
-            Title = "File browser";
 
-            AddChild(_open);
-            AddChild(_openField);
+            AddChild(_sidebarView);
+            AddChild(_filesView);
 
-            _newFolder.Text = "New folder";
+            _sidebarView.AddChild(_sidebarFolderList);
+            _filesView.AddChild(_fileList);
+
+            _sidebarFolderList.AutoSize = true;
+            _fileList.AutoSize = true;
+
+            Width = 550;
+            Height = 300;
+
+            Title = "File Manager";
+
+            _fileList.SetImage("dir", _directoryTexture);
+
+            _save = _gameloop.Content.Load<Texture2D>("UIIcons/save");
+            _open = _gameloop.Content.Load<Texture2D>("UIIcons/folder-open-o");
+
+
+            ResetLists();
+
+            _fileList.SelectedIndexChanged += (o, a) =>
+            {
+                if (_mode == FileManagerMode.Browse)
+                    return;
+
+                var selected = _fileList.SelectedItem;
+                if (selected == null)
+                    _filename.Text = "";
+                else
+                    _filename.Text = selected.Text;
+            };
+
+            _sidebarFolderList.Click += (o, a) =>
+            {
+                var selectedItem = _sidebarFolderList.SelectedItem;
+                if(selectedItem != null)
+                {
+                    _prevStack.Push(CurrentPath);
+                    _nextStack.Clear();
+                    CurrentPath = ((ShellDirectoryInformation)selectedItem).Path;
+                }
+            };
+
+            _fileList.DoubleClick += (o, a) =>
+            {
+                var selected = _fileList.SelectedItem;
+                if(selected != null)
+                {
+                    if (_fs.DirectoryExists(selected.Tag.ToString()))
+                    {
+                        _prevStack.Push(CurrentPath);
+                        _nextStack.Clear();
+                        CurrentPath = selected.Tag.ToString();
+                    }
+                    else if (_fs.FileExists(selected.Tag.ToString()))
+                    {
+                        if (_mode == FileManagerMode.Browse)
+                        {
+                            _infobox.Show("Not yet implemented", "You cannot yet open files from File Manager.");
+                            return;
+                        }
+
+                        HandleFileSelect(selected.Tag.ToString());
+                    }
+                        
+                }
+            };
+
+            _back.Texture = _gameloop.Content.Load<Texture2D>("ThemeAssets/Arrows/chevron-left");
+            _forward.Texture = _gameloop.Content.Load<Texture2D>("ThemeAssets/Arrows/chevron-right");
+            _refresh.Texture = _gameloop.Content.Load<Texture2D>("UIIcons/refresh");
+            _newFolder.Texture = _gameloop.Content.Load<Texture2D>("UIIcons/folder");
+            _up.Texture = _gameloop.Content.Load<Texture2D>("ThemeAssets/Arrows/chevron-up");
+
+            _up.Click += (o, a) =>
+            {
+                string path = CurrentPath;
+                if (path.EndsWith("/"))
+                    path = path.Remove(path.LastIndexOf("/"), 1);
+                if(string.IsNullOrWhiteSpace(path))
+                {
+                    _infobox.Show("Invalid Operation", "You cannot move up beyond the root folder '/'.");
+                    return;
+                }
+                int lastSlash = path.LastIndexOf("/");
+                string parent = path.Substring(0, lastSlash);
+                if (string.IsNullOrWhiteSpace(parent))
+                    parent = "/";
+                _prevStack.Push(CurrentPath);
+                _nextStack.Clear();
+                CurrentPath = parent;
+            };
+
             _newFolder.Click += (o, a) =>
             {
-                string folderPath = _currentDirectory;
+                string path = CurrentPath;
                 _infobox.PromptText("New folder", "Please enter a name for your new folder.", (name) =>
                 {
-                    string fullPath = (folderPath.EndsWith("/")) ? folderPath + name : folderPath + "/" + name;
-                    _fs.CreateDirectory(fullPath);
-                    _needsReset = true;
-                }, (proposedName)=>
+                    if (path.EndsWith("/"))
+                        path += name;
+                    else
+                        path += "/" + name;
+                    if(_fs.DirectoryExists(path))
+                    {
+                        _infobox.Show("Folder exists", "There is already an existing folder with that name.");
+                        return;
+                    }
+
+                    _fs.CreateDirectory(path);
+                    ResetLists();
+                }, (name) =>
                 {
-                    if(string.IsNullOrWhiteSpace(proposedName))
+                    if (string.IsNullOrWhiteSpace(name))
                     {
-                        _infobox.Show("New folder", "Your folder's name must not be blank.");
+                        _infobox.Show("Invalid folder name", "Folder names cannot be blank.");
                         return false;
                     }
-
-                    foreach(char c in proposedName)
+                    string validChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-_ ";
+                    if (name.Any(x => !validChars.Contains(x)))
                     {
-                        if (char.IsLetterOrDigit(c))
-                            continue;
-                        if (c == '_' || c == ' ' || c == '-' || c == '.')
-                            continue;
-                        _infobox.Show("Invalid path character", "Your new folder's name contains an invalid character. Valid characters include any letter or number as well as '.', '_', '-' or a space.");
+                        _infobox.Show("Invalid folder name", "The name you entered contains characters not valid in a folder name.");
                         return false;
                     }
-
-                    string fullPath = (folderPath.EndsWith("/")) ? folderPath + proposedName : folderPath + "/" + proposedName;
-                    if(_fs.DirectoryExists(fullPath) || _fs.FileExists(fullPath))
-                    {
-                        _infobox.Show("New folder", "A folder or file already exists with that name.");
-                        return false;
-                    }
-
                     return true;
+
                 });
             };
 
-            _placesView.ItemClicked += (item) =>
+            _refresh.Click += (o, a) =>
             {
-                if (_placesView.SelectedIndex == -1)
-                    return;
-                var path = item?.Tag?.ToString();
-                if(path != _currentDirectory)
-                {
-                    _pastLocs.Push(_currentDirectory);
-                    _futureLocs.Clear();
-                    _currentDirectory = path;
-                    _needsReset = true;
-                }
+                ResetLists();
             };
 
             _back.Click += (o, a) =>
             {
-                if (_pastLocs.Count > 0)
-                {
-                    _futureLocs.Push(_currentDirectory);
-                    _currentDirectory = _pastLocs.Pop();
-                    _needsReset = true;
-                }
+                _nextStack.Push(CurrentPath);
+                CurrentPath = _prevStack.Pop();
             };
             _forward.Click += (o, a) =>
             {
-                if (_futureLocs.Count > 0)
+                _prevStack.Push(CurrentPath);
+                CurrentPath = _nextStack.Pop();
+            };
+
+            _action.Click += (o, a) =>
+            {
+                HandleActionClick();
+            };
+
+            _filename.KeyEvent += (o, a) =>
+            {
+                if(a.Key == Microsoft.Xna.Framework.Input.Keys.Enter)
                 {
-                    _pastLocs.Push(_currentDirectory);
-                    _currentDirectory = _futureLocs.Pop();
-                    _needsReset = true;
+                    HandleActionClick();
                 }
             };
 
-            foreach(var shelldir in _os.GetShellDirs())
+            AddChild(_filename);
+            AddChild(_action);
+        }
+
+        private void HandleActionClick()
+        {
+            string path = CurrentPath;
+            if (path.EndsWith("/"))
+                path += _filename.Text;
+            else
+                path += "/" + _filename.Text;
+
+            if(_fs.DirectoryExists(path))
             {
-                var lvitem = new ListViewItem();
-                lvitem.Value = shelldir.FriendlyName;
-                lvitem.Tag = shelldir.Path;
-                lvitem.ImageKey = lvitem.Tag.ToString();
-                if (shelldir.Texture != null)
-                    _placesView.SetImage(lvitem.ImageKey, shelldir.Texture);
-                _placesView.AddItem(lvitem);
+                _prevStack.Push(CurrentPath);
+                _nextStack.Clear();
+                CurrentPath = path;
+                _filename.Text = "";
             }
-
-            _filesView.SetImage("directory", _plexgate.Content.Load<Texture2D>("UIIcons/folder"));
-
-            _filesView.SelectedIndexChanged += (o, a) =>
+            else if(_fs.FileExists(path))
             {
-                if(_filesView.SelectedItem != null)
+                string name = _futils.GetNameFromPath(path);
+                if(_filter == null || _filter.Length == 0)
+                    HandleFileSelect(path);
+                else if(!_filter.Contains(_futils.GetMimeType(name)))
                 {
-                    _openField.Text = _filesView.SelectedItem.Value.ToString();
-                }
-            };
-            _filesView.ItemClicked += (item) =>
-            {
-                if (_fs.DirectoryExists(item.Tag.ToString()))
-                {
-                    _futureLocs.Clear();
-                    _pastLocs.Push(_currentDirectory);
-                    _currentDirectory = item.Tag.ToString();
-                    _needsReset = true;
-                }
-                else
-                {
-                    if (_isDialog)
-                    {
-                        open(item.Tag.ToString());
-                        return;
-                    }
-                    if(!_utils.OpenFile(item.Tag.ToString()))
-                    {
-                        _infobox.Show("Can't open file", "File Manager couldn't find a program that can open that file!");
-                    }
+                    _infobox.Show("File not found", "No file with that name exists in the current folder.");
                     return;
                 }
-            };
-            _open.Click += (o, a) =>
+                HandleFileSelect(path);
+                    
+
+            }
+            else
             {
-                string path = _openField.Text;
-                if (path.StartsWith("/"))
-                    path = _futils.Resolve(path);
+                if (_mode == FileManagerMode.SaveFile)
+                    HandleFileSelect(path);
                 else
-                    path = _futils.Resolve(_currentDirectory + "/" + path);
-                if (_isSaving == false)
+                    _infobox.Show("File not found", "No file with that name exists in the current folder.");
+            }
+        }
+
+        public event Action<string> FileSelected;
+
+        private void HandleFileSelect(string path)
+        {
+            if (_mode == FileManagerMode.OpenFile)
+            {
+                FileSelected?.Invoke(path);
+            }
+            else if (_mode == FileManagerMode.SaveFile)
+            {
+                if (_fs.FileExists(path))
                 {
-                    if (_fs.FileExists(path))
+                    _infobox.ShowYesNo("Overwrite file?", "Are you sure you want to overwrite " + path + "?", (answer) =>
                     {
-                        open(path);
-                        return;
-                    }
-                    Enabled = false;
-                    _infobox.Show("File not found.", $"The system could not find the file specified: {path}", () =>
-                    {
-                        Enabled = true;
+                        if (answer)
+                            FileSelected?.Invoke(path);
                     });
                 }
                 else
                 {
-                    open(path);
+                    FileSelected?.Invoke(path);
                 }
-            };
-            _searchButton.Click += (o, a) =>
-            {
-                _filesView.Filter = _search.Text;
-                if (_filesView.VisibleItems.Length == 0)
-                {
-                    _statusHead.Text = "No results found";
-                    _statusDescription.Text = $"Your search \"{_search.Text}\" did not return any results.";
-                    _statusDescription.Visible = true;
-                    _statusHead.Visible = true;
-                }
-                else
-                {
-                    _statusHead.Visible = false;
-                    _statusDescription.Visible = false;
-                }
-            };
-            _search.KeyEvent += _search_KeyEvent;
-
-            AddChild(_statusHead);
-            AddChild(_statusDescription);
+            }
         }
 
-        [Dependency]
-        private FileUtilities _utils = null;
-
-        private void _search_KeyEvent(object sender, MonoGame.Extended.Input.InputListeners.KeyboardEventArgs e)
-        {
-            if (e.Key == Microsoft.Xna.Framework.Input.Keys.Enter)
-            {
-                _filesView.Filter = _search.Text;
-                if (_filesView.VisibleItems.Length == 0)
-                {
-                    _statusHead.Text = "No results found";
-                    _statusDescription.Text = $"Your search \"{_search.Text}\" did not return any results.";
-                    _statusDescription.Visible = true;
-                    _statusHead.Visible = true;
-                }
-                else
-                {
-                    _statusHead.Visible = false;
-                    _statusDescription.Visible = false;
-                }
-            }
-
-        }
-
-        private bool _needsReset = true;
-
-        private Label _statusHead = new Label();
-        private Label _statusDescription = new Label();
-
-        /// <summary>
-        /// Force a reset of the GUI causing reloading of icons and re-population of the Places and Files lists.
-        /// </summary>
-        public void ResetUI()
-        {
-            _search.Text = "";
-            _filesView.Filter = null;
-            _back.Image = _plexgate.Content.Load<Texture2D>("ThemeAssets/Arrows/chevron-left");
-            _forward.Image = _plexgate.Content.Load<Texture2D>("ThemeAssets/Arrows/chevron-right");
-            _searchButton.Image = _plexgate.Content.Load<Texture2D>("UIIcons/search");
-            _forward.ShowImage = true;
-            _back.ShowImage = true;
-            _searchButton.ShowImage = true;
-
-            var placesItems = _placesView.Items;
-            var currentWork = placesItems.OrderByDescending(x => x.Tag.ToString().Length).FirstOrDefault(x => _currentDirectory.StartsWith(x.Tag.ToString()));
-            if (currentWork != null)
-                _placesView.SelectedIndex = Array.IndexOf(placesItems, currentWork);
-            else
-                _placesView.SelectedIndex = -1;
-
-            _filesView.ClearItems();
-            if (!_fs.DirectoryExists(_currentDirectory))
-            {
-                Enabled = false;
-                _infobox.Show("File manager", $"The directory {_currentDirectory} was not found on your system.", () =>
-                {
-                    _currentDirectory = "/";
-                    _needsReset = true;
-                    Enabled = true;
-                });
-                return;
-            }
-            bool noFiles = true;
-
-            foreach (var dir in _fs.GetDirectories(_currentDirectory))
-            {
-                string shorthand = _futils.GetNameFromPath(dir);
-                if (shorthand == "." || shorthand == "..")
-                    continue;
-                if (shorthand.StartsWith("."))
-                    if (!_showHidden)
-                        continue;
-                var lvitem = new ListViewItem();
-                lvitem.Value = shorthand;
-                lvitem.Tag = dir;
-                lvitem.ImageKey = "directory";
-                _filesView.AddItem(lvitem);
-                noFiles = false;
-            }
-            foreach(var dir in _fs.GetFiles(_currentDirectory))
-            {
-                string shorthand = _futils.GetNameFromPath(dir);
-                if (shorthand == "." || shorthand == "..")
-                    continue;
-                if (shorthand.StartsWith("."))
-                    if (!_showHidden)
-                        continue;
-                var lvitem = new ListViewItem();
-                lvitem.Value = shorthand;
-                lvitem.Tag = dir;
-                lvitem.ImageKey = _futils.GetMimeType(shorthand);
-                if (_filesView.GetImage(lvitem.ImageKey) == null)
-                {
-                    _filesView.SetImage(lvitem.ImageKey, _futils.GetMimeIcon(lvitem.ImageKey));
-                }
-                _filesView.AddItem(lvitem);
-
-                noFiles = false;
-            }
-            if(noFiles == true)
-            {
-                _statusHead.Text = "This folder is empty";
-                _statusDescription.Text = "There are no files or folders to show in this folder.";
-                _statusHead.Visible = true;
-                _statusDescription.Visible = true;
-                _searchButton.Enabled = false;
-                _search.Enabled = false;
-            }
-            else
-            {
-                _statusHead.Visible = false;
-                _statusDescription.Visible = false;
-                _searchButton.Enabled = true;
-                _search.Enabled = true;
-
-            }
-        }
-        
-        [Dependency]
-        private InfoboxManager _infobox = null;
-
-        /// <inheritdoc/>
         protected override void OnUpdate(GameTime time)
         {
-            if(_needsReset)
+            _back.Width = _toolbarIconSize;
+            _back.Height = _toolbarIconSize;
+            _forward.Width = _toolbarIconSize;
+            _forward.Height = _toolbarIconSize;
+            _up.Width = _toolbarIconSize;
+            _up.Height = _toolbarIconSize;
+            _newFolder.Width = _toolbarIconSize;
+            _newFolder.Height = _toolbarIconSize;
+            _refresh.Width = _toolbarIconSize;
+            _refresh.Height = _toolbarIconSize;
+
+
+            _pathLabel.Text = _currentPath;
+
+            int toolbarPaddingV = 4;
+            int toolbarBaseHeight = Math.Max(_pathLabel.Height, _toolbarIconSize);
+            if(toolbarBaseHeight == _pathLabel.Height)
             {
-                ResetUI();
-                _needsReset = false;
-            }
-            _search.Width = 175;
-            _search.Label = "Search...";
-            base.OnUpdate(time);
-            _back.X = 5;
-            _forward.X = _back.X + _back.Width + 2;
-            _newFolder.X = _forward.X + _forward.Width + 2;
-
-            
-            _searchButton.X = (Width - _searchButton.Width) - 5;
-            _search.X = _searchButton.X - _search.Width - 2;
-            _search.Y = 5;
-
-            _path.X = _newFolder.X + _newFolder.Width + 5;
-            _path.AutoSize = true;
-            _path.MaxWidth = (_search.X) - (_path.X) - 5;
-            _path.Text = "This is your current path...";
-            _path.Y = (_search.Y) + ((_search.Height - _path.Height) / 2);
-
-            _searchButton.Y = (_search.Y) + ((_search.Height - _searchButton.Height) / 2);
-            _back.Y = (_search.Y) + ((_search.Height - _back.Height) / 2);
-            _forward.Y = (_search.Y) + ((_search.Height - _forward.Height) / 2);
-            _newFolder.Y = _forward.Y;
-
-            _open.Visible = _isDialog;
-            _openField.Visible = _isDialog;
-
-            
-            _places.X = 0;
-            _places.Y = _newFolder.Y + _newFolder.Height + 5;
-            _placesView.Width = Width / 3;
-            _files.X = _places.Width + 4;
-            _files.Y = _places.Y;
-            _filesView.Width = Width - _files.X;
-            _placesView.Layout = ListViewLayout.List;
-
-            _path.Text = _currentDirectory;
-
-            _back.Enabled = (_pastLocs.Count > 0);
-            _forward.Enabled = (_futureLocs.Count > 0);
-
-            _statusHead.FontStyle = Plex.Engine.Themes.TextFontStyle.Header1;
-            _statusDescription.FontStyle = Plex.Engine.Themes.TextFontStyle.Header3;
-            _statusHead.AutoSize = true;
-            _statusDescription.AutoSize = true;
-            _statusHead.MaxWidth = _filesView.Width - 60;
-            _statusDescription.MaxWidth = _statusHead.MaxWidth;
-            _statusHead.X = (_files.X) + ((_filesView.Width - _statusHead.Width) / 2);
-            _statusDescription.X = (_files.X) + ((_filesView.Width - _statusDescription.Width) / 2);
-
-            _statusHead.Y = _files.Y + 50;
-            _statusDescription.Y = _statusHead.Y + _statusHead.Height + 10;
-
-            if (_open.Visible)
-            {
-                _open.Text = (_isSaving) ? "Save" : "Open";
-                _openField.Label = "File name or file path";
-
-                int _larger = Math.Max(_open.Height, _openField.Height);
-                int _starty = (Height - _larger) - 6;
-                _open.Y = _starty + ((_larger - _open.Height) / 2)+3;
-                _openField.Y = _starty + ((_larger - _openField.Height) / 2)+3;
-
-                _open.X = (Width - _open.Width) - 3;
-                _openField.X = 3;
-                _openField.Width = (_open.X - _openField.X) - 6;
-                _places.Height = (Height - _places.Y) - (_larger+3);
-                _open.Enabled = !string.IsNullOrWhiteSpace(_openField.Text);
+                _pathLabel.Y = toolbarPaddingV;
+                _back.Y = _pathLabel.Y + ((_pathLabel.Height - _toolbarIconSize) / 2);
             }
             else
             {
-                _places.Height = Height - _places.Y;
-
+                _back.Y = toolbarPaddingV;
+                _pathLabel.Y = _back.Y + ((_back.Height - _pathLabel.Height) / 2);
             }
-            _files.Height = _places.Height;
+
+            int bottomStart = Height;
+
+            if (_action.Visible)
+            {
+                _action.Width = 20;
+                _action.Height = 20;
+
+                int bottomHeight = Math.Max(_action.Height, _filename.Height);
+
+                if(bottomHeight == _action.Height)
+                {
+                    _action.Y = (Height - 3) - _action.Height;
+                    _filename.Y = _action.Y + ((_action.Height - _filename.Height) / 2);
+                    bottomStart = _action.Y - 3;
+                }
+                else
+                {
+                    _filename.Y = (Height - 3) - _filename.Height;
+                    _action.Y = _filename.Y + ((_filename.Height - _action.Height) / 2);
+                    bottomStart = _filename.Y - 3;
+                }
+
+                _action.X = (Width - 3) - _action.Width;
+
+                _filename.X = 3;
+                _filename.Width = _action.X - 6;
+
+                _filename.Label = "Filename";
+
+                _action.Enabled = !string.IsNullOrEmpty(_filename.Text);
+            }
+
+
+            _back.X = toolbarPaddingV;
+            _forward.X = _back.X + _back.Width + toolbarPaddingV;
+            _up.X = _forward.X + _forward.Width + toolbarPaddingV;
+            _newFolder.X = _up.X + _up.Width + toolbarPaddingV;
+            _refresh.X = _newFolder.X + _newFolder.Width + toolbarPaddingV;
+
+            _forward.Y = _back.Y;
+            _up.Y = _back.Y;
+            _newFolder.Y = _back.Y;
+            _refresh.Y = _back.Y;
+
+            _pathLabel.X = _refresh.X + _refresh.Width + (toolbarPaddingV * 2);
+
+            _sidebarView.Y = toolbarBaseHeight + (toolbarPaddingV * 2);
+            _filesView.Y = _sidebarView.Y;
+
+            _sidebarView.Height = (bottomStart - _sidebarView.Y);
+            _filesView.Height = _sidebarView.Height;
+
+            _sidebarView.X = 0;
+            _sidebarView.Width = 175;
+            _filesView.X = _sidebarView.X + _sidebarView.Width + 2;
+            _filesView.Width = (Width - _filesView.X);
+
+            _sidebarFolderList.Width = _sidebarView.Width;
+            _fileList.Width = _filesView.Width;
+
+            _back.Tint = Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System);
+            if (_back.LeftButtonPressed)
+                _back.Tint = Theme.GetAccentColor().Darken(0.5F);
+            else if (_back.ContainsMouse)
+                _back.Tint = Theme.GetAccentColor();
+
+            _refresh.Tint = Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System);
+            if (_refresh.LeftButtonPressed)
+                _refresh.Tint = Theme.GetAccentColor().Darken(0.5F);
+            else if (_refresh.ContainsMouse)
+                _refresh.Tint = Theme.GetAccentColor();
+
+            _forward.Tint = Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System);
+            if (_forward.LeftButtonPressed)
+                _forward.Tint = Theme.GetAccentColor().Darken(0.5F);
+            else if (_forward.ContainsMouse)
+                _forward.Tint = Theme.GetAccentColor();
+
+            _newFolder.Tint = Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System);
+            if (_newFolder.LeftButtonPressed)
+                _newFolder.Tint = Theme.GetAccentColor().Darken(0.5F);
+            else if (_newFolder.ContainsMouse)
+                _newFolder.Tint = Theme.GetAccentColor();
+
+            _up.Tint = Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System);
+            if (_up.LeftButtonPressed)
+                _up.Tint = Theme.GetAccentColor().Darken(0.5F);
+            else if (_up.ContainsMouse)
+                _up.Tint = Theme.GetAccentColor();
+
+            _action.Tint = Theme.GetFontColor(Plex.Engine.Themes.TextFontStyle.System);
+            if (_action.LeftButtonPressed)
+                _action.Tint = Theme.GetAccentColor().Darken(0.5F);
+            else if (_action.ContainsMouse)
+                _action.Tint = Theme.GetAccentColor();
+
+
+            _up.Enabled = (CurrentPath != "/");
+            _back.Enabled = _prevStack.Count > 0;
+            _forward.Enabled = _nextStack.Count > 0;
+
+            base.OnUpdate(time);
         }
+    }
+
+    public enum FileManagerMode
+    {
+        Browse,
+        OpenFile,
+        SaveFile
     }
 }

@@ -32,27 +32,9 @@ namespace Peacenet.Applications
         private TerminalManager _manager = null;
 
         [Dependency]
-        private Plexgate _plexgate = null;
+        private GameLoop _plexgate = null;
 
         private int _scrollOffset = 0;
-
-        protected override bool CanBeScrolled
-        {
-            get
-            {
-                return true;
-            }
-        }
-
-        protected override void OnMouseScroll(int delta)
-        {
-            if(_emulator.Height < Height)
-            {
-                _scrollOffset = 0;
-                return;
-            }
-            _scrollOffset = MathHelper.Clamp(_scrollOffset + delta, 0, _emulator.Height - Height);
-        }
 
         private ScrollBar _scrollbar = new ScrollBar();
 
@@ -77,13 +59,8 @@ namespace Peacenet.Applications
             AddChild(_emulator);
             SetWindowStyle(WindowStyle.Default);
             Width = (80 * _emulator.CharacterWidth);
-            Height = (25 * _emulator.CharacterHeight);
+            Height = (20 * _emulator.CharacterHeight);
             Title = "Terminal";
-            Click += (o, a) =>
-            {
-                Manager.SetFocus(_emulator);
-            };
-
             AddChild(_scrollbar);
         }
 
@@ -145,11 +122,12 @@ namespace Peacenet.Applications
             if (_lastEmulatorY != _emulator.Y)
             {
                 _lastEmulatorY = _emulator.Y;
-                Invalidate(true);
             }
             _emulator.Width = Width;
-            _scrollbar.Visible = WindowSystem.WindowList.FirstOrDefault(x => x.Border == this.Parent).Border.WindowStyle != WindowStyle.NoBorder;
+            _scrollbar.Visible = (this.Parent as WindowBorder).WindowStyle != WindowStyle.NoBorder;
 
+            if (HasFocused && !_emulator.IsFocused)
+                Manager.SetFocus(_emulator);
         }
 
         /// <inheritdoc/>
@@ -320,23 +298,14 @@ namespace Peacenet.Applications
         public void Run(ConsoleContext console, Dictionary<string, object> arguments)
         {
             _history = new List<CommandInstruction>();
-            string user = "user";
+            string user = _os.Username;
             string workdir = "/home";
             console.WorkingDirectory = workdir;
             while (true)
             {
                 try
                 {
-                    if (_Api.LoggedIn)
-                    {
-                        user = _Api.User.username;
-                        console.SetColors(Plex.Objects.ConsoleColor.Black, Plex.Objects.ConsoleColor.Orange);
-                    }
-                    else
-                    {
-                        user = "user";
-                        console.SetColors(Plex.Objects.ConsoleColor.Black, Plex.Objects.ConsoleColor.White);
-                    }
+                    console.SetColors(Plex.Objects.ConsoleColor.Black, Plex.Objects.ConsoleColor.White);
                     console.Write(user);
                     console.SetColors(Plex.Objects.ConsoleColor.Black, Plex.Objects.ConsoleColor.Gray);
                     console.Write("@");
@@ -471,7 +440,6 @@ namespace Peacenet.Applications
                 {
                     _cursorOn = true;
                     _cursorAnim = 0;
-                    Invalidate(true);
                 }
             };
         }
@@ -489,8 +457,6 @@ namespace Peacenet.Applications
         /// <inheritdoc/>
         protected override void OnKeyEvent(KeyboardEventArgs e)
         {
-            if (_cursorOn != true)
-                Invalidate(true);
             _cursorOn = true;
             _cursorAnim = 0;
 
@@ -627,19 +593,19 @@ namespace Peacenet.Applications
                         }
 
 
-                        gfx.DrawRectangle(new Vector2(_charX * _charWidth, _charY * _charHeight), new Vector2(_charWidth, _charHeight), _background);
+                        gfx.FillRectangle(new Vector2(_charX * _charWidth, _charY * _charHeight), new Vector2(_charWidth, _charHeight), _background);
 
                         continue;
                     case '\n':
-                        gfx.DrawRectangle(new Vector2((_charX+1) * _charWidth, _charY * _charHeight), new Vector2(Width - ((_charX+1)*_charWidth), _charHeight), _background);
+                        gfx.FillRectangle(new Vector2((_charX+1) * _charWidth, _charY * _charHeight), new Vector2(Width - ((_charX+1)*_charWidth), _charHeight), _background);
                         _charX = 0;
                         _charY += 1;
                         break;
                     case (char)0x02:
                         continue;
                     default:
-                        gfx.DrawRectangle(new Vector2(_charX * _charWidth, _charY * _charHeight), new Vector2(_charWidth, _charHeight), _background);
-                        gfx.Batch.DrawString(_font, c.ToString(), new Vector2(((_charX * (_charWidth)) + gfx.X) + gfx.RenderOffsetX, ((_charY * (_charHeight)) + gfx.Y) + gfx.RenderOffsetY), _foreground, 0, Vector2.Zero, 1, SpriteEffects.None, 0);
+                        gfx.FillRectangle(new Vector2(_charX * _charWidth, _charY * _charHeight), new Vector2(_charWidth, _charHeight), _background);
+                        gfx.DrawString(_font, c.ToString(), new Vector2(_charX*_charWidth,_charY*_charHeight), _foreground);
                         if ((_charX + 1) * _charWidth >= Width)
                         {
                             _charX = 0;
@@ -653,7 +619,7 @@ namespace Peacenet.Applications
                 }
             }
            if(IsFocused && _cursorOn)
-                gfx.DrawRectangle(new Vector2(_charX * _charWidth, _charY * _charHeight), new Vector2(_charWidth, _charHeight), _foreground);
+                gfx.FillRectangle(new Vector2(_charX * _charWidth, _charY * _charHeight), new Vector2(_charWidth, _charHeight), _foreground);
         }
 
 
@@ -680,7 +646,7 @@ namespace Peacenet.Applications
                             char last = _textBuffer[_textBuffer.Length - 1];
                             _textBuffer = _textBuffer.Remove(_textBuffer.Length - 1, 1);
                             if (last == (char)0x1B)
-                                _textBuffer = _textBuffer.Remove(_textBuffer.LastIndexOf((char)0x02), _textBuffer.Length - _textBuffer.LastIndexOf((char)0x02));
+                                _textBuffer = _textBuffer.Remove(_textBuffer.LastIndexOf((char)0x1B), _textBuffer.Length - _textBuffer.LastIndexOf((char)0x1B));
                         }
                     }
                     else
@@ -691,7 +657,6 @@ namespace Peacenet.Applications
                     _cursorAnim = 0;
                     ch = _slave.ReadByte();
                 }
-                Invalidate(true);
             }
 
             if (Height != (_charY+1)*_charHeight)
@@ -700,12 +665,10 @@ namespace Peacenet.Applications
             }
 
             _cursorAnim += time.ElapsedGameTime.TotalMilliseconds;
-            if(_cursorAnim >= 250)
+            if (_cursorAnim >= 250)
             {
                 _cursorAnim = 0;
                 _cursorOn = !_cursorOn;
-                if(IsFocused)
-                    Invalidate(true);
             }
         }
 
@@ -720,5 +683,17 @@ namespace Peacenet.Applications
             _charHeight = (int)csize.Y;
 
         }
+    }
+
+    public class CustomCommandTerminal : Terminal
+    {
+        private string _command = null;
+
+        public CustomCommandTerminal(string cmd, WindowSystem _winsys) : base(_winsys)
+        {
+            _command = cmd;
+        }
+
+        protected override string Shell => _command;
     }
 }

@@ -22,10 +22,7 @@ namespace Peacenet.Cutscene
         private int _lineIndex = 0;
         private double _cursorTime = 0;
 
-        private double _installTime = 5;
-        private bool _showInstallCounter = false;
-
-        private SoundEffectInstance _bgm = null;
+        private SoundEffectInstance _beep = null;
 
         [Dependency]
         private ThemeManager _theme = null;
@@ -49,16 +46,12 @@ namespace Peacenet.Cutscene
 
         public override void Load(ContentManager content)
         {
-            _bgm = content.Load<SoundEffect>("Audio/Cutscene/Prologue/Briefing").CreateInstance();
+            _beep = content.Load<SoundEffect>("Audio/Cutscene/Prologue/SineBeep2000").CreateInstance();
             _font = content.Load<SpriteFont>("ThemeAssets/Fonts/PrologueFont");
         }
 
         public override void OnPlay()
         {
-            _showInstallCounter = false;
-            _bgm.Volume = 1;
-            _bgm.Play();
-            _bgm.IsLooped = true;
         }
 
         public override void Update(GameTime time)
@@ -68,12 +61,14 @@ namespace Peacenet.Cutscene
                 case 0:
                     _cursorTime = 0.25;
                     _ride += time.ElapsedGameTime.TotalSeconds;
-                    if (_ride >= 0.05)
+                    if (_ride >= 0.015)
                     {
                         if (_charIndex < _lines[_lineIndex].Length)
                         {
                             _charIndex++;
                             _ride = 0;
+                            if (_charIndex % 2 == 0) //Only beep every second character.
+                                _beep.Play();
                         }
                         else
                         {
@@ -100,8 +95,6 @@ namespace Peacenet.Cutscene
                         else
                         {
                             _state=3;
-                            _installTime = 10;
-                            _showInstallCounter = true;
                         }
                     }
                     break;
@@ -115,14 +108,7 @@ namespace Peacenet.Cutscene
                     break;
                 case 3:
                     _cursorTime = 0;
-                    _installTime -= time.ElapsedGameTime.TotalSeconds;
-                    _bgm.Volume = MathHelper.Clamp((float)_installTime / 10, 0, 1);
-                    if(_installTime<=0)
-                    {
-                        _bgm.Stop();
-                        _showInstallCounter = false;
-                        NotifyFinished();
-                    }
+                    NotifyFinished();
                     break;
             }
         }
@@ -131,43 +117,27 @@ namespace Peacenet.Cutscene
         {
             var mono = _font;
 
-            string introText = TextRenderer.WrapText(mono, _lines[_lineIndex].Substring(0, _charIndex), (int)(gfx.Width * 0.75), Plex.Engine.TextRenderers.WrapMode.Words);
+            string introText = TextRenderer.WrapText(mono, _lines[_lineIndex], (int)(gfx.Width * 0.75), Plex.Engine.TextRenderers.WrapMode.Words);
+            string introCulledText = TextRenderer.WrapText(mono, _lines[_lineIndex].Substring(0, _charIndex), (int)(gfx.Width * 0.75), Plex.Engine.TextRenderers.WrapMode.Words);
+
             var introTextMeasure = mono.MeasureString(introText);
             var cursorMeasure = mono.MeasureString("#");
 
-            gfx.BeginDraw();
-
             var textLocation = new Vector2((gfx.Width - introTextMeasure.X) / 2, (gfx.Height - introTextMeasure.Y) / 2);
             var lines = introText.Split('\n');
-            for (int i = 0; i < lines.Length; i++)
+            var cullLines = introCulledText.Split('\n');
+            for (int i = 0; i < cullLines.Length; i++)
             {
                 var line = lines[i];
                 var measure = mono.MeasureString(line);
                 var loc = new Vector2((gfx.Width - measure.X) / 2, textLocation.Y + (measure.Y * i));
-                gfx.Batch.DrawString(mono, line, loc, _theme.Theme.GetAccentColor().Lighten(0.5F));
-                if (i == lines.Length - 1 && _cursorTime >= 0.25)
+                gfx.DrawString(mono, cullLines[i], loc, _theme.Theme.GetAccentColor().Lighten(0.5F));
+                if (i == cullLines.Length - 1 && _cursorTime >= 0.25)
                 {
-                    gfx.DrawRectangle(new Vector2(loc.X + measure.X, loc.Y), cursorMeasure, Color.White);
+                    gfx.FillRectangle(new Vector2(loc.X + mono.MeasureString(cullLines[i]).X, loc.Y), cursorMeasure, Color.White);
                 }
             }
 
-            if(_showInstallCounter)
-            {
-                var installText = "Commensing installation in ";
-                var timeText = string.Format("{0:N2}s", _installTime);
-                var measure = mono.MeasureString(installText + timeText);
-                var installWidth = mono.MeasureString(installText).X;
-                var textLoc = new Vector2((gfx.Width - measure.X) / 2, (gfx.Height - measure.Y) / 2);
-
-                gfx.DrawRectangle(new Vector2(textLoc.X - 30, textLoc.Y - 7), new Vector2(MathHelper.Lerp(0, measure.X + 60, ((float)_installTime / 10)), measure.Y + 14), Color.Red.Darken(0.5F));
-
-                gfx.Batch.DrawString(mono, installText, textLoc, _theme.Theme.GetAccentColor().Lighten(0.5f));
-                gfx.Batch.DrawString(mono, timeText, new Vector2(textLoc.X + installWidth, textLoc.Y), Color.Red);
-
-
-            }
-
-            gfx.EndDraw();
         }
     }
 }

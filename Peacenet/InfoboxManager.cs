@@ -73,7 +73,7 @@ namespace Peacenet
         private TextBox _inputBox = null;
 
         [Dependency]
-        private Plexgate _plexgate = null;
+        private GameLoop _plexgate = null;
 
         /// <inheritdoc/>
         public Infobox(WindowSystem _winsys) : base(_winsys)

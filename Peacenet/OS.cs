@@ -19,8 +19,8 @@ using Plex.Engine.Themes;
 using Peacenet.Filesystem;
 using System.Threading;
 using Plex.Engine.Config;
-using Peacenet.Server;
 using Plex.Objects;
+using Peacenet.GameState;
 
 namespace Peacenet
 {
@@ -33,7 +33,7 @@ namespace Peacenet
         private SplashScreenComponent _splash = null;
 
         [Dependency]
-        private Plexgate _plexgate = null;
+        private GameLoop _GameLoop = null;
 
         private bool _preventStartup = false;
         private Layer _osLayer = new Layer();
@@ -41,33 +41,6 @@ namespace Peacenet
 
         public string Hostname { get; private set; } = "localhost";
         
-        public bool IsPlayingNewConnectionAnimation
-        {
-            get
-            {
-                return _osEntity.IsReceivingConnection;
-            }
-        }
-
-        public void SimulateConnectionFromSystem(string ip)
-        {
-            if (_server.IsMultiplayer)
-                return;
-            var ipaddr = GetIPFromString(ip);
-            using (var memstr = new MemoryStream())
-            {
-                using (var writer = new BinaryWriter(memstr, Encoding.UTF8))
-                {
-                    writer.Write(ipaddr);
-                    writer.Flush();
-                    _server.SendMessage(Plex.Objects.ServerMessageType.SP_SIMULATE_CONNECTION_TO_PLAYER, memstr.ToArray(), (res, reader) =>
-                    {
-
-                    }).Wait();
-                }
-            }
-        }
-
         public uint CombineToUint(byte[] values)
         {
             if (values == null)
@@ -78,6 +51,7 @@ namespace Peacenet
             result = values[0] + (values[1] << 8) + (values[2] << 16) + (values[3] << 24);
             return (uint)result;
         }
+
 
         public uint GetIPFromString(string iPAddress)
         {
@@ -163,6 +137,7 @@ namespace Peacenet
         public void Initiate()
         {
             _fs.WriteOperation += wcallback;
+
         }
 
         [Dependency]
@@ -182,14 +157,9 @@ namespace Peacenet
             "/root"
         };
 
-        private Backend.Backend _localBackend = null;
-
         [Dependency]
         private AppDataManager _appdata = null;
 
-
-        [Dependency]
-        private AsyncServerManager _server = null;
 
         private Texture2D _peacegate = null;
 
@@ -206,27 +176,10 @@ namespace Peacenet
 
         private EventWaitHandle _clientReady = new ManualResetEvent(false);
 
-        internal void StartLocalServer()
-        {
-            _localBackend = new Backend.Backend(3252, false, Path.Combine(_appdata.GamePath, "world"));
-            _localBackend.Listen();
-            _localBackend.ServerReady.WaitOne();
-            Logger.Log("Starting internal single-player server.");
-
-            var result = _server.Connect("localhost:3252");
-
-            result.Wait();
-
-            Logger.Log("*** Connected To Internal Server ***", System.ConsoleColor.Green);
-
-            if (result.Result.Result != ConnectionResultType.Success)
-                throw new Exception("An error has occurred starting the internal server.");
-
-            EnsureProperEnvironment();
-        }
-
         internal void OnReady()
         {
+
+
             if(_osEntity != null)
             {
                 _osEntity.Dispose();
@@ -248,16 +201,36 @@ namespace Peacenet
             WallpaperChanged?.Invoke();
         }
 
+        [Dependency]
+        private GameManager _game = null;
+
+        [Dependency]
+        private ConfigManager _config = null;
+
+        public string Username
+        {
+            get
+            {
+                if (!_api.LoggedIn)
+                    return "user";
+
+                if(_game.State is SinglePlayerStateInfo)
+                {
+                    if (!_config.GetValue("itch.showUsername", true))
+                        return "user";
+                }
+                return _api.User.username;
+            }
+        }
+
         /// <summary>
         /// Retrieves all shell folders.
         /// </summary>
         /// <returns>A list containing all shell folders.</returns>
         public IEnumerable<ShellDirectoryInformation> GetShellDirs()
         {
-            string uname = "Your";
-            if (_api.LoggedIn)
-                uname = (_api.User.display_name.ToLower().EndsWith("s")) ? _api.User.display_name + "'" : _api.User.display_name + "'s";
-            yield return new ShellDirectoryInformation($"{uname} Home", "/home", _plexgate.Content.Load<Texture2D>("UIIcons/home"));
+            string uname = (Username != "user") ? Username + "'s" : "Your";
+            yield return new ShellDirectoryInformation($"{uname} Home", "/home", _GameLoop.Content.Load<Texture2D>("UIIcons/home"));
             yield return new ShellDirectoryInformation("Desktop", "/home/Desktop", null);
             yield return new ShellDirectoryInformation("Documents", "/home/Documents", null);
             yield return new ShellDirectoryInformation("Downloads", "/home/Downloads", null);
@@ -265,6 +238,8 @@ namespace Peacenet
             yield return new ShellDirectoryInformation("Pictures", "/home/Pictures", null);
             yield return new ShellDirectoryInformation("512MB Hard Disk Drive", "/", null);
         }
+
+
 
         /// <summary>
         /// Occurs once the Peacegate desktop starts.
@@ -278,29 +253,21 @@ namespace Peacenet
 
         internal void EnsureProperEnvironment()
         {
-            try
-            {
-                _fs.SetBackend(new AsyncServerFSBackend());
-                foreach (var dir in requiredPaths)
-                {
-                    if (!_fs.DirectoryExists(dir))
-                        _fs.CreateDirectory(dir);
-                }
+            _fs.SetupSpecialFiles();
 
-                
-            }
-            catch (Exception ex)
+            foreach(var shellDir in GetShellDirs())
             {
-                throw ex;
+                if (!_fs.DirectoryExists(shellDir.Path))
+                    _fs.CreateDirectory(shellDir.Path);
             }
         }
 
         private void startBoot()
         {
             updHostname();
-            SessionStart?.Invoke();
-            _osEntity = _plexgate.New<OSEntity>();
-            _plexgate.GetLayer(LayerType.Main).AddEntity(_osEntity);
+            _osEntity = _GameLoop.New<OSEntity>();
+            _osEntity.SessionStarted += () => SessionStart?.Invoke();
+            _GameLoop.GetLayer(LayerType.Main).AddEntity(_osEntity);
         }
 
 
@@ -314,12 +281,6 @@ namespace Peacenet
                 _osEntity = null;
             }
             _splash.Reset();
-            if (_localBackend != null)
-            {
-                if (_server.Connected)
-                    _server.Disconnect();
-                _localBackend.Shutdown("");
-            }
         }
 
         public void Dispose()
@@ -379,7 +340,7 @@ namespace Peacenet
     /// <summary>
     /// Contains information about a Peacegate shell directory.
     /// </summary>
-    public class ShellDirectoryInformation
+    public struct ShellDirectoryInformation
     {
         /// <summary>
         /// Creates a new instance of the <see cref="ShellDirectoryInformation"/> class. 
@@ -389,14 +350,26 @@ namespace Peacenet
         /// <param name="texture">The icon for the directory.</param>
         public ShellDirectoryInformation(string name, string path, Texture2D texture)
         {
-            if (string.IsNullOrWhiteSpace(name))
+            if (name==null)
                 throw new ArgumentNullException(nameof(name));
-            if (string.IsNullOrWhiteSpace(path))
+            if (path==null)
                 throw new ArgumentNullException(nameof(path));
             FriendlyName = name;
             Path = path;
             Texture = texture;
         }
+
+        public static bool operator ==(ShellDirectoryInformation a, ShellDirectoryInformation b)
+        {
+            return (a.FriendlyName == b.FriendlyName && a.Path == b.Path && a.Texture == b.Texture);
+        }
+
+        public static bool operator !=(ShellDirectoryInformation a, ShellDirectoryInformation b)
+        {
+            return !(a.FriendlyName == b.FriendlyName && a.Path == b.Path && a.Texture == b.Texture);
+        }
+
+        public static ShellDirectoryInformation Empty => new ShellDirectoryInformation("", "", null);
 
         /// <summary>
         /// Retrieves the icon for this directory.
@@ -410,5 +383,10 @@ namespace Peacenet
         /// Retrieves the full path of the directory.
         /// </summary>
         public string Path { get; private set; }
+
+        public override string ToString()
+        {
+            return $"{FriendlyName}";
+        }
     }
 }
